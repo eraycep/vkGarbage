@@ -55,6 +55,8 @@ public:
     const FrameResources& currentFrameResources() const;
     // Call after waiting for the current frame fence and acquiring an image.
     void updateShaderData(const Scene& scene);
+    // Record the current frame for the image returned by vkAcquireNextImageKHR.
+    void recordCommands(std::uint32_t acquiredImageIndex);
     // Call only after a frame has been submitted and presented.
     void advanceFrame();
 
@@ -64,7 +66,6 @@ private:
     void createFrameResources();
     void createDescriptors();
     void createPipeline();
-    void recordCommands();
     void submitAndPresent();
     void destroySwapchainResources();
     void cleanup();
