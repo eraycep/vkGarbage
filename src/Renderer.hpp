@@ -52,7 +52,11 @@ public:
         VkDeviceAddress shaderDataAddress{0};
     };
 
-    const FrameResources& frameResources(std::uint32_t index) const;
+    const FrameResources& currentFrameResources() const;
+    // Call after waiting for the current frame fence and acquiring an image.
+    void updateShaderData(const Scene& scene);
+    // Call only after a frame has been submitted and presented.
+    void advanceFrame();
 
 private:
     void createSwapchain();
@@ -60,7 +64,6 @@ private:
     void createFrameResources();
     void createDescriptors();
     void createPipeline();
-    void updateShaderData(const Scene& scene);
     void recordCommands();
     void submitAndPresent();
     void destroySwapchainResources();

@@ -1,6 +1,11 @@
 #pragma once
 
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+
 #include <array>
 #include <cstdint>
 
@@ -25,6 +30,7 @@ public:
     void selectPrevious();
     std::uint32_t selectedObject() const;
     ShaderData shaderData(float aspectRatio) const;
+    glm::vec3 cameraPosition() const;
 
 private:
     glm::vec3 cameraPosition_{0.0f, 0.0f, -6.0f};

@@ -45,10 +45,7 @@ int main(int argc, char* argv[])
     const VkDescriptorSet descriptorSetTex = renderer.textureSet();
     const VkPipeline pipeline = renderer.pipeline();
     const VkPipelineLayout pipelineLayout = renderer.pipelineLayout();
-    Scene::ShaderData shaderData{};
-    glm::vec3 camPos{0.0f, 0.0f, -6.0f};
-    glm::vec3 objectRotations[Scene::objectCount]{};
-    uint32_t frameIndex{0};
+    Scene scene;
     uint32_t imageIndex{0};
     bool updateSwapchain{false};
 
@@ -68,7 +65,7 @@ int main(int argc, char* argv[])
             updateSwapchain = false;
         }
         const auto windowSize = renderer.extent();
-        const auto& frame = renderer.frameResources(frameIndex);
+        const auto& frame = renderer.currentFrameResources();
         const VkSwapchainKHR swapchain = renderer.swapchain();
         const auto swapchainImages = renderer.swapchainImages();
         const auto swapchainImageViews = renderer.swapchainImageViews();
@@ -88,15 +85,7 @@ int main(int argc, char* argv[])
             chk(acquired);
         }
         chk(vkResetFences(device, 1, &frame.fence));
-		// Update shader data
-		shaderData.projection = glm::perspective(glm::radians(45.0f), (float)windowSize.width / (float)windowSize.height, 0.1f, 32.0f);
-		shaderData.view = glm::translate(glm::mat4(1.0f), camPos);
-		for (auto i = 0; i < 3; i++) {
-			auto instancePos = glm::vec3((float)(i - 1) * 3.0f, 0.0f, 0.0f);
-			shaderData.model[i] = glm::translate(glm::mat4(1.0f), instancePos) * glm::mat4_cast(glm::quat(objectRotations[i]));
-		}
-		memcpy(frame.shaderDataAllocationInfo.pMappedData, &shaderData, sizeof(shaderData));
-        chk(vmaFlushAllocation(context.allocator(), frame.shaderDataAllocation, 0, VK_WHOLE_SIZE));
+        renderer.updateShaderData(scene);
 		// Build command buffer
 		auto cb = frame.commandBuffer;
 		chk(vkResetCommandBuffer(cb, 0));
@@ -193,7 +182,6 @@ int main(int argc, char* argv[])
 			.pSignalSemaphoreInfos = &signalSemaphoreInfo,
 		};
 		chk(vkQueueSubmit2(queue, 1, &submitInfo, frame.fence));
-		frameIndex = (frameIndex + 1) % Renderer::maxFramesInFlight;
 		VkPresentInfoKHR presentInfo{
 			.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 			.waitSemaphoreCount = 1,
@@ -208,6 +196,7 @@ int main(int argc, char* argv[])
         } else {
             chk(presented);
         }
+        renderer.advanceFrame();
 		// Event polling
 		float elapsedTime{ (SDL_GetTicks() - lastTime) / 1000.0f };
 		lastTime = SDL_GetTicks();
@@ -218,19 +207,18 @@ int main(int argc, char* argv[])
 			}
 			if (event.type == SDL_EVENT_MOUSE_MOTION) {
 				if ((event.motion.state & SDL_BUTTON_LMASK) != 0) {
-					objectRotations[shaderData.selected].x -= (float)event.motion.yrel * elapsedTime;
-					objectRotations[shaderData.selected].y += (float)event.motion.xrel * elapsedTime;
+					scene.rotateSelected({-event.motion.yrel * elapsedTime, event.motion.xrel * elapsedTime});
 				}
 			}
 			if (event.type == SDL_EVENT_MOUSE_WHEEL) {
-				camPos.z += (float)event.wheel.y * elapsedTime * 10.0f;
+				scene.moveCamera(event.wheel.y * elapsedTime * 10.0f);
 			}
 			if (event.type == SDL_EVENT_KEY_DOWN) {
 				if (event.key.key == SDLK_PLUS || event.key.key == SDLK_KP_PLUS) {
-					shaderData.selected = (shaderData.selected < 2) ? shaderData.selected + 1 : 0;
+					scene.selectNext();
 				}
 				if (event.key.key == SDLK_MINUS || event.key.key == SDLK_KP_MINUS) {
-					shaderData.selected = (shaderData.selected > 0) ? shaderData.selected - 1 : 2;
+					scene.selectPrevious();
 				}
 			}
 			// Window resize

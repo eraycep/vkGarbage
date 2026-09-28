@@ -5,6 +5,7 @@
 #include "Scene.hpp"
 #include "Assets.hpp"
 #include <algorithm>
+#include <cstring>
 
 Renderer::Renderer(VulkanContext& context, const Window& window, const Assets& assets) : context_(context), window_(window), assets_(assets)
 {
@@ -194,6 +195,15 @@ void Renderer::createPipeline()
     chk(vkCreateGraphicsPipelines(context_.device(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &pipeline_));
 }
 
+void Renderer::updateShaderData(const Scene& scene)
+{
+    chk(extent_.width > 0 && extent_.height > 0);
+    const Scene::ShaderData shaderData = scene.shaderData(static_cast<float>(extent_.width) / extent_.height);
+
+    memcpy(frames_[frameIndex_].shaderDataAllocationInfo.pMappedData, &shaderData, sizeof(shaderData));
+    chk(vmaFlushAllocation(context_.allocator(), frames_[frameIndex_].shaderDataAllocation, 0, VK_WHOLE_SIZE));
+}
+
 bool Renderer::recreateSwapchain()
 {
     const auto size = window_.framebufferExtent();
@@ -260,4 +270,9 @@ VkPipelineLayout Renderer::pipelineLayout() const { return pipelineLayout_; }
 std::span<const VkImage> Renderer::swapchainImages() const { return swapchainImages_; }
 std::span<const VkImageView> Renderer::swapchainImageViews() const { return swapchainImageViews_; }
 std::span<const VkSemaphore> Renderer::renderCompleteSemaphores() const { return renderCompleteSemaphores_; }
-const Renderer::FrameResources& Renderer::frameResources(std::uint32_t index) const { return frames_.at(index); }
+const Renderer::FrameResources& Renderer::currentFrameResources() const { return frames_[frameIndex_]; }
+
+void Renderer::advanceFrame()
+{
+    frameIndex_ = (frameIndex_ + 1) % maxFramesInFlight;
+}
