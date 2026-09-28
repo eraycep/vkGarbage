@@ -8,6 +8,7 @@
 
 #include <ktx.h>
 #include <ktxvulkan.h>
+#define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
 Assets::Assets(VulkanContext &context) : context_(context)
@@ -29,6 +30,7 @@ Assets::~Assets()
 void Assets::load(const std::filesystem::path &directory)
 {
     chk(mesh_.buffer == VK_NULL_HANDLE); // load() is a one-time operation.
+    compileShader(directory / "shader.slang");
     loadMesh(directory / "suzanne.obj");
     for (std::size_t i = 0; i < textures_.size(); ++i)
     {
@@ -64,7 +66,6 @@ void Assets::loadMesh(const std::filesystem::path &path)
                                 .size = vBufSize + iBufSize,
                                 .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT};
     VmaAllocationCreateInfo vBufferAllocCI{.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                                                    VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT |
                                                     VMA_ALLOCATION_CREATE_MAPPED_BIT,
                                            .usage = VMA_MEMORY_USAGE_AUTO};
     VmaAllocationInfo vBufferAllocInfo{};
@@ -216,6 +217,59 @@ Assets::Texture Assets::loadTexture(const std::filesystem::path &path)
     return texture;
 }
 
+void Assets::compileShader(const std::filesystem::path& path)
+{
+    if (SLANG_FAILED(slang::createGlobalSession(slangGlobalSession_.writeRef()))) {
+		std::cerr << "Could not initialize the Slang compiler\n";
+		std::exit(EXIT_FAILURE);
+	}
+
+    auto slangTargets{ std::to_array<slang::TargetDesc>({ {
+        .format{SLANG_SPIRV},
+        .profile{slangGlobalSession_->findProfile("spirv_1_4")}
+    } })};
+    auto slangOptions{ std::to_array<slang::CompilerOptionEntry>({ {
+        slang::CompilerOptionName::EmitSpirvDirectly,
+        {slang::CompilerOptionValueKind::Int, 1}
+    } })};
+    slang::SessionDesc slangSessionDesc{
+        .targets{slangTargets.data()},
+        .targetCount{SlangInt(slangTargets.size())},
+        .defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR,
+        .compilerOptionEntries{slangOptions.data()},
+        .compilerOptionEntryCount{uint32_t(slangOptions.size())}
+    };
+
+    Slang::ComPtr<slang::ISession> slangSession;
+	if (SLANG_FAILED(slangGlobalSession_->createSession(slangSessionDesc, slangSession.writeRef()))) {
+		std::cerr << "Could not create the Slang session\n";
+		std::exit(EXIT_FAILURE);
+	}
+
+	Slang::ComPtr<ISlangBlob> diagnostics;
+	Slang::ComPtr<slang::IModule> slangModule{ slangSession->loadModule(path.string().c_str(), diagnostics.writeRef()) };
+	if (diagnostics) {
+		std::cerr << static_cast<const char*>(diagnostics->getBufferPointer());
+	}
+	if (!slangModule) {
+		std::cerr << "Could not load assets/shader.slang\n";
+		std::exit(EXIT_FAILURE);
+	}
+	Slang::ComPtr<ISlangBlob> spirv;
+	diagnostics.setNull();
+	SlangResult compileResult = slangModule->getTargetCode(0, spirv.writeRef(), diagnostics.writeRef());
+	if (diagnostics) {
+		std::cerr << static_cast<const char*>(diagnostics->getBufferPointer());
+	}
+	if (SLANG_FAILED(compileResult) || !spirv) {
+		std::cerr << "Could not compile assets/shader.slang to SPIR-V\n";
+		std::exit(EXIT_FAILURE);
+	}
+
+    VkShaderModuleCreateInfo shaderModuleCI{ .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, .codeSize = spirv->getBufferSize(), .pCode = (uint32_t*)spirv->getBufferPointer() };
+    chk(vkCreateShaderModule(context_.device(), &shaderModuleCI, nullptr, &shaderModule_));
+}
+
 VkCommandBuffer Assets::beginUpload()
 {
     VkCommandBuffer cbOneTime{};
@@ -271,4 +325,9 @@ const Assets::Mesh &Assets::mesh() const
 std::span<const Assets::Texture> Assets::textures() const
 {
     return textures_;
+}
+
+VkShaderModule Assets::shaderModule() const
+{
+    return shaderModule_;
 }

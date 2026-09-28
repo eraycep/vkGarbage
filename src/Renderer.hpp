@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <vector>
+#include <span>
 
 class VulkanContext;
 class Window;
@@ -24,7 +25,21 @@ public:
     void drawFrame(const Scene& scene);
     void requestResize();
 
-private:
+    // Borrowed resources for main.cpp until drawing is moved into Renderer.
+    VkSwapchainKHR swapchain() const;
+    VkExtent2D extent() const;
+    VkFormat colorFormat() const;
+    VkFormat depthFormat() const;
+    VkImage depthImage() const;
+    VkImageView depthImageView() const;
+    VkDescriptorSetLayout textureSetLayout() const;
+    VkDescriptorSet textureSet() const;
+    std::span<const VkImage> swapchainImages() const;
+    std::span<const VkImageView> swapchainImageViews() const;
+    std::span<const VkSemaphore> renderCompleteSemaphores() const;
+    // Returns false when minimized; try again before acquiring an image.
+    bool recreateSwapchain();
+
     struct FrameResources {
         VkCommandBuffer commandBuffer{VK_NULL_HANDLE};
         VkFence fence{VK_NULL_HANDLE};
@@ -35,13 +50,14 @@ private:
         VkDeviceAddress shaderDataAddress{0};
     };
 
+    const FrameResources& frameResources(std::uint32_t index) const;
+
+private:
     void createSwapchain();
     void createDepthResources();
     void createFrameResources();
     void createDescriptors();
     void createPipeline();
-    // Returns false while the framebuffer has zero extent (e.g. minimized).
-    bool recreateSwapchain();
     void updateShaderData(const Scene& scene);
     void recordCommands();
     void submitAndPresent();
