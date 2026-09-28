@@ -195,10 +195,28 @@ void Renderer::createPipeline()
     chk(vkCreateGraphicsPipelines(context_.device(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &pipeline_));
 }
 
-void Renderer::recordCommands(std::uint32_t acquiredImageIndex)
+VkResult Renderer::acquireNextImage()
 {
-    chk(acquiredImageIndex < swapchainImages_.size());
-    imageIndex_ = acquiredImageIndex;
+    const auto& frame = frames_[frameIndex_];
+    chk(vkWaitForFences(context_.device(), 1, &frame.fence, VK_TRUE, UINT64_MAX));
+    const VkResult result = vkAcquireNextImageKHR(context_.device(), swapchain_, UINT64_MAX,
+                                                frame.imageAcquired, VK_NULL_HANDLE, &imageIndex_);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        requestResize();
+    } else {
+        chk(result);
+    }
+    return result;
+}
+
+const std::uint32_t& Renderer::currentImageIndex() const
+{
+    return imageIndex_;
+}
+
+void Renderer::recordCommands()
+{
+    chk(imageIndex_ < swapchainImages_.size());
     auto cb = frames_[frameIndex_].commandBuffer;
     chk(vkResetCommandBuffer(cb, 0));
     VkCommandBufferBeginInfo cbBI{ .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT };
@@ -289,6 +307,40 @@ void Renderer::recordCommands(std::uint32_t acquiredImageIndex)
     chk(vkEndCommandBuffer(cb));
 }
 
+void Renderer::submitAndPresent()
+{
+    VkSemaphoreSubmitInfo waitSemaphoreInfo{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, .semaphore = currentFrameResources().imageAcquired, .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT };
+    VkCommandBufferSubmitInfo commandBufferSubmitInfo{ .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO, .commandBuffer = currentFrameResources().commandBuffer };
+    VkSemaphoreSubmitInfo signalSemaphoreInfo{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, .semaphore = renderCompleteSemaphores_[imageIndex_], .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT };
+    VkSubmitInfo2 submitInfo{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+        .waitSemaphoreInfoCount = 1,
+        .pWaitSemaphoreInfos = &waitSemaphoreInfo,
+        .commandBufferInfoCount = 1,
+        .pCommandBufferInfos = &commandBufferSubmitInfo,
+        .signalSemaphoreInfoCount = 1,
+        .pSignalSemaphoreInfos = &signalSemaphoreInfo
+    };
+    // Reset only when submitting, so an unsuccessful acquire leaves the fence signaled.
+    chk(vkResetFences(context_.device(), 1, &currentFrameResources().fence));
+    chk(vkQueueSubmit2(context_.graphicsQueue(), 1, &submitInfo, currentFrameResources().fence));
+    VkPresentInfoKHR presentInfo{
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &renderCompleteSemaphores_[imageIndex_],
+        .swapchainCount = 1,
+        .pSwapchains = &swapchain_,
+        .pImageIndices = &imageIndex_
+    };
+    const VkResult presented = vkQueuePresentKHR(context_.graphicsQueue(), &presentInfo);
+    if (presented == VK_ERROR_OUT_OF_DATE_KHR || presented == VK_SUBOPTIMAL_KHR) {
+        requestResize();
+    } else {
+        chk(presented);
+    }
+    advanceFrame();
+}
+
 void Renderer::updateShaderData(const Scene& scene)
 {
     chk(extent_.width > 0 && extent_.height > 0);
@@ -298,10 +350,21 @@ void Renderer::updateShaderData(const Scene& scene)
     chk(vmaFlushAllocation(context_.allocator(), frames_[frameIndex_].shaderDataAllocation, 0, VK_WHOLE_SIZE));
 }
 
+void Renderer::requestResize()
+{
+    resizeRequested_ = true;
+}
+
+bool Renderer::resizeRequested() const
+{
+    return resizeRequested_;
+}
+
 bool Renderer::recreateSwapchain()
 {
     const auto size = window_.framebufferExtent();
     if (size.width == 0 || size.height == 0) {
+        requestResize();
         return false;
     }
     context_.waitIdle();
@@ -313,6 +376,7 @@ bool Renderer::recreateSwapchain()
     for (auto& semaphore : renderCompleteSemaphores_) {
         chk(vkCreateSemaphore(context_.device(), &info, nullptr, &semaphore));
     }
+    resizeRequested_ = false;
     return true;
 }
 

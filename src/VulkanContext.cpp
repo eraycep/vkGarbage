@@ -1,3 +1,5 @@
+#define VOLK_IMPLEMENTATION
+#define VMA_IMPLEMENTATION
 #include "VulkanContext.hpp"
 #include "Common.hpp"
 #include "Window.hpp"

@@ -10,7 +10,7 @@ class Assets;
 class Scene;
 class Renderer;
 
-// Coordinates the components. Methods are declarations for the manual refactor.
+// Owns the components and coordinates initialization, input, rendering, and shutdown.
 class Application {
 public:
     explicit Application(std::uint32_t deviceIndex = 0);

@@ -24,6 +24,7 @@ public:
 
     void drawFrame(const Scene& scene);
     void requestResize();
+    bool resizeRequested() const;
 
     // Borrowed resources for main.cpp until drawing is moved into Renderer.
     VkSwapchainKHR swapchain() const;
@@ -55,10 +56,14 @@ public:
     const FrameResources& currentFrameResources() const;
     // Call after waiting for the current frame fence and acquiring an image.
     void updateShaderData(const Scene& scene);
-    // Record the current frame for the image returned by vkAcquireNextImageKHR.
-    void recordCommands(std::uint32_t acquiredImageIndex);
-    // Call only after a frame has been submitted and presented.
-    void advanceFrame();
+    // Wait for the current frame and store the image index selected by Vulkan.
+    // Marks resize requests; caller skips recording on OUT_OF_DATE.
+    VkResult acquireNextImage();
+    const std::uint32_t& currentImageIndex() const;
+    // Call only after successful acquisition (SUCCESS or SUBOPTIMAL).
+    void recordCommands();
+    // Submit the recorded frame, handle presentation status, and advance the frame.
+    void submitAndPresent();
 
 private:
     void createSwapchain();
@@ -66,7 +71,7 @@ private:
     void createFrameResources();
     void createDescriptors();
     void createPipeline();
-    void submitAndPresent();
+    void advanceFrame();
     void destroySwapchainResources();
     void cleanup();
 
