@@ -34,6 +34,8 @@ public:
     VkImageView depthImageView() const;
     VkDescriptorSetLayout textureSetLayout() const;
     VkDescriptorSet textureSet() const;
+    VkPipeline pipeline() const;
+    VkPipelineLayout pipelineLayout() const;
     std::span<const VkImage> swapchainImages() const;
     std::span<const VkImageView> swapchainImageViews() const;
     std::span<const VkSemaphore> renderCompleteSemaphores() const;
