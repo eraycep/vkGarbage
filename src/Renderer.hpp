@@ -5,7 +5,6 @@
 #include <array>
 #include <cstdint>
 #include <vector>
-#include <span>
 
 class VulkanContext;
 class Window;
@@ -22,25 +21,11 @@ public:
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
 
-    void drawFrame(const Scene& scene);
+    bool drawFrame(const Scene& scene);
     void requestResize();
-    bool resizeRequested() const;
 
-    // Borrowed resources for main.cpp until drawing is moved into Renderer.
-    VkSwapchainKHR swapchain() const;
-    VkExtent2D extent() const;
-    VkFormat colorFormat() const;
-    VkFormat depthFormat() const;
-    VkImage depthImage() const;
-    VkImageView depthImageView() const;
-    VkDescriptorSetLayout textureSetLayout() const;
-    VkDescriptorSet textureSet() const;
-    VkPipeline pipeline() const;
-    VkPipelineLayout pipelineLayout() const;
-    std::span<const VkImage> swapchainImages() const;
-    std::span<const VkImageView> swapchainImageViews() const;
-    std::span<const VkSemaphore> renderCompleteSemaphores() const;
-    // Returns false when minimized; try again before acquiring an image.
+private:
+    // Returns false while the window has zero extent.
     bool recreateSwapchain();
 
     struct FrameResources {
@@ -53,19 +38,6 @@ public:
         VkDeviceAddress shaderDataAddress{0};
     };
 
-    const FrameResources& currentFrameResources() const;
-    // Call after waiting for the current frame fence and acquiring an image.
-    void updateShaderData(const Scene& scene);
-    // Wait for the current frame and store the image index selected by Vulkan.
-    // Marks resize requests; caller skips recording on OUT_OF_DATE.
-    VkResult acquireNextImage();
-    const std::uint32_t& currentImageIndex() const;
-    // Call only after successful acquisition (SUCCESS or SUBOPTIMAL).
-    void recordCommands();
-    // Submit the recorded frame, handle presentation status, and advance the frame.
-    void submitAndPresent();
-
-private:
     void createSwapchain();
     void createDepthResources();
     void createFrameResources();
@@ -74,6 +46,17 @@ private:
     void advanceFrame();
     void destroySwapchainResources();
     void cleanup();
+
+    const FrameResources& currentFrameResources() const;
+    // Call after waiting for the current frame fence and acquiring an image.
+    void updateShaderData(const Scene& scene);
+    // Wait for the current frame and store the image index selected by Vulkan.
+    // Marks resize requests; caller skips recording on OUT_OF_DATE.
+    VkResult acquireNextImage();
+    // Call only after successful acquisition (SUCCESS or SUBOPTIMAL).
+    void recordCommands();
+    // Submit the recorded frame, handle presentation status, and advance the frame.
+    void submitAndPresent();
 
     VulkanContext& context_;
     const Window& window_;

@@ -4,7 +4,7 @@
 cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 include(FetchContent)
-set(NAME HowToVulkan)
+set(NAME vkGarbage)
 project(${NAME})
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 

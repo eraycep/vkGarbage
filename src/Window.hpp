@@ -8,7 +8,7 @@
 // Owns SDL video initialization, Vulkan library loading, and the native window.
 class Window {
 public:
-    explicit Window(const char* title = "How to Vulkan", int width = 1280, int height = 720);
+    explicit Window(const char* title = "vkGarbage", int width = 1280, int height = 720);
     ~Window();
     Window(const Window&) = delete;
     Window& operator=(const Window&) = delete;

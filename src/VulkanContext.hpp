@@ -12,6 +12,12 @@ class Window;
 // Owns the Vulkan instance, surface, device, and allocator. Window outlives it.
 class VulkanContext {
 public:
+    #ifdef NDEBUG
+    static constexpr bool enableValidationLayers = false;
+    #else
+    static constexpr bool enableValidationLayers = true;
+    #endif
+
     explicit VulkanContext(const Window& window, std::uint32_t deviceIndex = 0);
     ~VulkanContext();
     VulkanContext(const VulkanContext&) = delete;
@@ -30,6 +36,7 @@ public:
 
 private:
     void createInstance(const Window& window);
+    void setupDebugMessenger();
     void selectPhysicalDevice(std::uint32_t deviceIndex);
     void createDevice();
     void createAllocator();
@@ -44,4 +51,5 @@ private:
     // Select a queue family supporting both graphics and this surface.
     std::uint32_t graphicsQueueFamily_{0};
     VmaAllocator allocator_{VK_NULL_HANDLE};
+    VkDebugUtilsMessengerEXT debugMessenger_{VK_NULL_HANDLE};
 };

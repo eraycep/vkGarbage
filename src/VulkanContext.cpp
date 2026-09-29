@@ -4,6 +4,72 @@
 #include "Common.hpp"
 #include "Window.hpp"
 
+#include <algorithm>
+#include <cstring>
+#include <stdexcept>
+#include <string>
+
+namespace {
+constexpr const char* validationLayer = "VK_LAYER_KHRONOS_validation";
+
+VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+    VkDebugUtilsMessageTypeFlagsEXT,
+    const VkDebugUtilsMessengerCallbackDataEXT* data,
+    void*)
+{
+    const char* level = (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ? "error" : "warning";
+    std::cerr << "[Vulkan " << level << "] "
+              << (data->pMessageIdName ? data->pMessageIdName : "validation") << ": "
+              << (data->pMessage ? data->pMessage : "No message") << '\n';
+    return VK_FALSE;
+}
+
+VkDebugUtilsMessengerCreateInfoEXT debugMessengerInfo()
+{
+    return {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                       VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                       VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+        .pfnUserCallback = validationCallback,
+    };
+}
+
+void requireValidationSupport()
+{
+    uint32_t count{0};
+    chk(vkEnumerateInstanceLayerProperties(&count, nullptr));
+    std::vector<VkLayerProperties> layers(count);
+    chk(vkEnumerateInstanceLayerProperties(&count, layers.data()));
+    if (std::none_of(layers.begin(), layers.end(), [](const auto& layer) {
+            return std::strcmp(layer.layerName, validationLayer) == 0;
+        })) {
+        throw std::runtime_error("Debug build requires VK_LAYER_KHRONOS_validation. "
+                                 "Install the Vulkan validation layers or configure the Vulkan SDK environment.");
+    }
+
+    std::vector<VkExtensionProperties> extensions;
+    // Debug extensions can be exposed by the loader or by the validation layer.
+    for (const char* layer : {static_cast<const char*>(nullptr), validationLayer}) {
+        count = 0;
+        chk(vkEnumerateInstanceExtensionProperties(layer, &count, nullptr));
+        std::vector<VkExtensionProperties> available(count);
+        chk(vkEnumerateInstanceExtensionProperties(layer, &count, available.data()));
+        extensions.insert(extensions.end(), available.begin(), available.end());
+    }
+    for (const char* required : {VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME}) {
+        if (std::none_of(extensions.begin(), extensions.end(), [required](const auto& extension) {
+                return std::strcmp(extension.extensionName, required) == 0;
+            })) {
+            throw std::runtime_error(std::string("Debug build requires instance extension: ") + required);
+        }
+    }
+}
+} // namespace
+
 VulkanContext::VulkanContext(const Window& window, std::uint32_t deviceIndex)
 {
     createInstance(window);
@@ -23,23 +89,58 @@ void VulkanContext::createInstance(const Window& window)
 
     VkApplicationInfo appInfo{
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = "tutorial",
+        .pApplicationName = "vkGarbage",
         .apiVersion = VK_API_VERSION_1_3,
     };
 
-    const auto instanceExtensions = window.requiredInstanceExtensions();
+    auto instanceExtensions = window.requiredInstanceExtensions();
+
+    std::vector<const char*> requiredLayers;
+    auto debugInfo = debugMessengerInfo();
+    const VkValidationFeatureEnableEXT synchronization = VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
+    VkValidationFeaturesEXT validationFeatures{
+        .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
+        .pNext = &debugInfo,
+        .enabledValidationFeatureCount = 1,
+        .pEnabledValidationFeatures = &synchronization,
+    };
+    if (enableValidationLayers) {
+        requireValidationSupport();
+        requiredLayers.push_back(validationLayer);
+        for (const char* extension : {VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME}) {
+            if (std::none_of(instanceExtensions.begin(), instanceExtensions.end(), [extension](const char* name) {
+                    return std::strcmp(name, extension) == 0;
+                })) {
+                instanceExtensions.push_back(extension);
+            }
+        }
+    }
 
     VkInstanceCreateInfo instanceCI{
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pNext = enableValidationLayers ? &validationFeatures : nullptr,
         .pApplicationInfo = &appInfo,
+        .enabledLayerCount = static_cast<uint32_t>(requiredLayers.size()),
+        .ppEnabledLayerNames = requiredLayers.data(),
         .enabledExtensionCount = static_cast<uint32_t>(instanceExtensions.size()),
-        .ppEnabledExtensionNames = instanceExtensions.data(),
+        .ppEnabledExtensionNames = instanceExtensions.data()
     };
 
     chk(vkCreateInstance(&instanceCI, nullptr, &instance_));
 
     volkLoadInstance(instance_);
+    setupDebugMessenger();
     surface_ = window.createSurface(instance_);
+}
+
+void VulkanContext::setupDebugMessenger()
+{
+    if (!enableValidationLayers) {
+        return;
+    }
+    chk(vkCreateDebugUtilsMessengerEXT != nullptr);
+    const auto info = debugMessengerInfo();
+    chk(vkCreateDebugUtilsMessengerEXT(instance_, &info, nullptr, &debugMessenger_));
 }
 
 /* Select physical device (GPU) from the list, I went with 0
@@ -119,6 +220,9 @@ void VulkanContext::cleanup()
     vmaDestroyAllocator(allocator_);
     vkDestroyDevice(device_, nullptr);
     vkDestroySurfaceKHR(instance_, surface_, nullptr);
+    if (debugMessenger_ != VK_NULL_HANDLE) {
+        vkDestroyDebugUtilsMessengerEXT(instance_, debugMessenger_, nullptr);
+    }
     vkDestroyInstance(instance_, nullptr);
 }
 

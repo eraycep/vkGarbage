@@ -22,6 +22,22 @@ Renderer::~Renderer()
     cleanup();
 }
 
+bool Renderer::drawFrame(const Scene& scene)
+{
+    if (resizeRequested_ && !recreateSwapchain()) {
+        return false;
+    }
+
+    if (acquireNextImage() == VK_ERROR_OUT_OF_DATE_KHR) {
+        return false;
+    }
+
+    updateShaderData(scene);
+    recordCommands();
+    submitAndPresent();
+    return true;
+}
+
 void Renderer::createSwapchain()
 {
     const VkDevice device = context_.device();
@@ -209,11 +225,6 @@ VkResult Renderer::acquireNextImage()
     return result;
 }
 
-const std::uint32_t& Renderer::currentImageIndex() const
-{
-    return imageIndex_;
-}
-
 void Renderer::recordCommands()
 {
     chk(imageIndex_ < swapchainImages_.size());
@@ -355,11 +366,6 @@ void Renderer::requestResize()
     resizeRequested_ = true;
 }
 
-bool Renderer::resizeRequested() const
-{
-    return resizeRequested_;
-}
-
 bool Renderer::recreateSwapchain()
 {
     const auto size = window_.framebufferExtent();
@@ -415,19 +421,6 @@ void Renderer::cleanup()
     destroySwapchainResources();
 }
 
-VkSwapchainKHR Renderer::swapchain() const { return swapchain_; }
-VkExtent2D Renderer::extent() const { return extent_; }
-VkFormat Renderer::colorFormat() const { return colorFormat_; }
-VkFormat Renderer::depthFormat() const { return depthFormat_; }
-VkImage Renderer::depthImage() const { return depthImage_; }
-VkImageView Renderer::depthImageView() const { return depthImageView_; }
-VkDescriptorSetLayout Renderer::textureSetLayout() const { return textureSetLayout_; }
-VkDescriptorSet Renderer::textureSet() const { return textureSet_; }
-VkPipeline Renderer::pipeline() const { return pipeline_; }
-VkPipelineLayout Renderer::pipelineLayout() const { return pipelineLayout_; }
-std::span<const VkImage> Renderer::swapchainImages() const { return swapchainImages_; }
-std::span<const VkImageView> Renderer::swapchainImageViews() const { return swapchainImageViews_; }
-std::span<const VkSemaphore> Renderer::renderCompleteSemaphores() const { return renderCompleteSemaphores_; }
 const Renderer::FrameResources& Renderer::currentFrameResources() const { return frames_[frameIndex_]; }
 
 void Renderer::advanceFrame()

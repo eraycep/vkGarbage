@@ -45,18 +45,12 @@ int Application::run()
         if (!running_) {
             break;
         }
-        if (renderer_->resizeRequested() && !renderer_->recreateSwapchain()) {
+
+        // A suboptimal acquisition still owns an image: finish before resizing.
+        if (!renderer_->drawFrame(*scene_)) {
             SDL_Delay(10);
             continue;
         }
-        const VkResult acquired = renderer_->acquireNextImage();
-        if (acquired == VK_ERROR_OUT_OF_DATE_KHR) {
-            continue;
-        }
-        // A suboptimal acquisition still owns an image: finish before resizing.
-        renderer_->updateShaderData(*scene_);
-        renderer_->recordCommands();
-        renderer_->submitAndPresent();
     }
     shutdown();
     return EXIT_SUCCESS;
