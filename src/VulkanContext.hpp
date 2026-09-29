@@ -42,6 +42,8 @@ private:
     void createAllocator();
     void cleanup();
 
+    bool isDeviceSuitable(VkPhysicalDevice const &physicalDevice);
+
     VkInstance instance_{VK_NULL_HANDLE};
     VkSurfaceKHR surface_{VK_NULL_HANDLE};
     VkPhysicalDevice physicalDevice_{VK_NULL_HANDLE};

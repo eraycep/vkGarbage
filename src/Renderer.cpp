@@ -9,11 +9,17 @@
 
 Renderer::Renderer(VulkanContext& context, const Window& window, const Assets& assets) : context_(context), window_(window), assets_(assets)
 {
-    createSwapchain();
-    createDepthResources();
+    const bool ready = createSwapchain();
+    if (ready) {
+        createDepthResources();
+    }
     createFrameResources();
     createDescriptors();
-    createPipeline();
+    if (ready) {
+        createPipeline();
+    } else {
+        requestResize();
+    }
 }
 
 Renderer::~Renderer()
@@ -38,44 +44,120 @@ bool Renderer::drawFrame(const Scene& scene)
     return true;
 }
 
-void Renderer::createSwapchain()
+bool Renderer::createSwapchain()
 {
     const VkDevice device = context_.device();
+    const VkPhysicalDevice physicalDevice = context_.physicalDevice();
     const VkSurfaceKHR surface = context_.surface();
-    auto framebufferExtent = window_.framebufferExtent();
-
-    VkSurfaceCapabilitiesKHR surfaceCaps{};
-    chk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context_.physicalDevice(), surface, &surfaceCaps));
-    extent_ = { surfaceCaps.currentExtent };
-    if (surfaceCaps.currentExtent.width == 0xFFFFFFFF) {
-        extent_ = {std::clamp(framebufferExtent.width, surfaceCaps.minImageExtent.width, surfaceCaps.maxImageExtent.width),
-                   std::clamp(framebufferExtent.height, surfaceCaps.minImageExtent.height, surfaceCaps.maxImageExtent.height)};
+    const auto framebufferExtent = window_.framebufferExtent();
+    if (framebufferExtent.width == 0 || framebufferExtent.height == 0) {
+        return false;
     }
 
-	const VkFormat imageFormat{ colorFormat_ };
-	VkSwapchainCreateInfoKHR swapchainCI{
-		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-		.surface = surface,
-		.minImageCount = surfaceCaps.minImageCount,
-		.imageFormat = imageFormat,
-		.imageColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR,
-		.imageExtent{.width = extent_.width, .height = extent_.height },
-		.imageArrayLayers = 1,
-		.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-		.preTransform = surfaceCaps.currentTransform,
-		.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-		.presentMode = VK_PRESENT_MODE_FIFO_KHR
-	};
-    chk(vkCreateSwapchainKHR(device, &swapchainCI, nullptr, &swapchain_));
-    uint32_t imageCount{ 0 };
-    chk(vkGetSwapchainImagesKHR(device, swapchain_, &imageCount, nullptr));
-    swapchainImages_.resize(imageCount);
-    chk(vkGetSwapchainImagesKHR(device, swapchain_, &imageCount, swapchainImages_.data()));
-    swapchainImageViews_.resize(imageCount);
-    for (auto i = 0; i < swapchainImages_.size(); i++) {
-        VkImageViewCreateInfo viewCI { .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = swapchainImages_[i], .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = imageFormat, .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1 } };
-        chk(vkCreateImageView(device, &viewCI, nullptr, &swapchainImageViews_[i]));
+    VkSurfaceCapabilitiesKHR caps{};
+    chk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &caps));
+    extent_ = caps.currentExtent;
+    if (extent_.width == UINT32_MAX) {
+        extent_ = {std::clamp(framebufferExtent.width, caps.minImageExtent.width, caps.maxImageExtent.width),
+                   std::clamp(framebufferExtent.height, caps.minImageExtent.height, caps.maxImageExtent.height)};
     }
+    if (extent_.width == 0 || extent_.height == 0) {
+        return false;
+    }
+    chk((caps.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0);
+
+    uint32_t count{0};
+    std::vector<VkSurfaceFormatKHR> formats;
+    VkResult result;
+    do {
+        chk(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &count, nullptr));
+        formats.resize(count);
+        result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &count, formats.data());
+    } while (result == VK_INCOMPLETE);
+    chk(result);
+    formats.resize(count);
+    // Preserve the renderer's sRGB output; do not silently switch to an HDR/linear format.
+    auto selected = formats.end();
+    for (VkFormat preferred : {VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB}) {
+        selected = std::find_if(formats.begin(), formats.end(), [preferred](const auto& format) {
+            return format.format == preferred && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+        });
+        if (selected != formats.end()) {
+            break;
+        }
+    }
+    if (selected == formats.end()) {
+        std::cerr << "Surface has no supported sRGB swapchain format\n";
+        std::exit(EXIT_FAILURE);
+    }
+    const auto surfaceFormat = *selected;
+    colorFormat_ = surfaceFormat.format;
+
+    std::vector<VkPresentModeKHR> modes;
+    do {
+        chk(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &count, nullptr));
+        modes.resize(count);
+        result = vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &count, modes.data());
+    } while (result == VK_INCOMPLETE);
+    chk(result);
+    modes.resize(count);
+    chk(std::find(modes.begin(), modes.end(), VK_PRESENT_MODE_FIFO_KHR) != modes.end());
+
+    VkCompositeAlphaFlagBitsKHR compositeAlpha{};
+    for (auto mode : {VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+                      VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR, VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR}) {
+        if (caps.supportedCompositeAlpha & mode) {
+            compositeAlpha = mode;
+            break;
+        }
+    }
+    chk(compositeAlpha != 0);
+    uint32_t requestedImages = caps.minImageCount;
+    if (requestedImages < UINT32_MAX) {
+        ++requestedImages;
+    }
+    if (caps.maxImageCount != 0) {
+        requestedImages = std::min(requestedImages, caps.maxImageCount);
+    }
+    VkSwapchainCreateInfoKHR info{
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface = surface,
+        .minImageCount = requestedImages,
+        .imageFormat = surfaceFormat.format,
+        .imageColorSpace = surfaceFormat.colorSpace,
+        .imageExtent = extent_,
+        .imageArrayLayers = 1,
+        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .preTransform = caps.currentTransform,
+        .compositeAlpha = compositeAlpha,
+        .presentMode = VK_PRESENT_MODE_FIFO_KHR,
+        .clipped = VK_TRUE,
+    };
+    result = vkCreateSwapchainKHR(device, &info, nullptr, &swapchain_);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        return false; // The surface changed between the query and creation; retry next frame.
+    }
+    chk(result);
+    do {
+        chk(vkGetSwapchainImagesKHR(device, swapchain_, &count, nullptr));
+        swapchainImages_.resize(count);
+        result = vkGetSwapchainImagesKHR(device, swapchain_, &count, swapchainImages_.data());
+    } while (result == VK_INCOMPLETE);
+    chk(result);
+    swapchainImages_.resize(count);
+    swapchainImageViews_.resize(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        VkImageViewCreateInfo viewInfo{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = swapchainImages_[i],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = colorFormat_,
+            .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1},
+        };
+        chk(vkCreateImageView(device, &viewInfo, nullptr, &swapchainImageViews_[i]));
+    }
+    return true;
 }
 
 void Renderer::createDepthResources()
@@ -374,9 +456,23 @@ bool Renderer::recreateSwapchain()
         return false;
     }
     context_.waitIdle();
+    // Retain the pipeline's formats across retries that defer swapchain creation.
+    const VkFormat previousColorFormat = colorFormat_;
+    const VkFormat previousDepthFormat = depthFormat_;
     destroySwapchainResources();
-    createSwapchain();
+    if (!createSwapchain()) {
+        colorFormat_ = previousColorFormat;
+        requestResize();
+        return false;
+    }
     createDepthResources();
+    if (pipeline_ == VK_NULL_HANDLE || colorFormat_ != previousColorFormat || depthFormat_ != previousDepthFormat) {
+        vkDestroyPipeline(context_.device(), pipeline_, nullptr);
+        vkDestroyPipelineLayout(context_.device(), pipelineLayout_, nullptr);
+        pipeline_ = VK_NULL_HANDLE;
+        pipelineLayout_ = VK_NULL_HANDLE;
+        createPipeline();
+    }
     VkSemaphoreCreateInfo info{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     renderCompleteSemaphores_.resize(swapchainImages_.size());
     for (auto& semaphore : renderCompleteSemaphores_) {

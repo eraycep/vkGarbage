@@ -38,7 +38,7 @@ private:
         VkDeviceAddress shaderDataAddress{0};
     };
 
-    void createSwapchain();
+    bool createSwapchain();
     void createDepthResources();
     void createFrameResources();
     void createDescriptors();
