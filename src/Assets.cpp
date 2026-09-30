@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
 
 #include <ktx.h>
 #include <ktxvulkan.h>
@@ -38,44 +41,125 @@ void Assets::load(const std::filesystem::path &directory)
     }
 }
 
-void Assets::loadMesh(const std::filesystem::path &path)
+namespace {
+struct MeshData {
+    std::vector<Assets::Vertex> vertices;
+    std::vector<std::uint32_t> indices;
+};
+
+MeshData loadMeshData(const std::filesystem::path& path)
 {
+    const auto filename = path.string();
+    auto fail = [&filename](const std::string& reason) {
+        throw std::runtime_error("Could not load mesh '" + filename + "': " + reason);
+    };
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
-    chk(tinyobj::LoadObj(&attrib, &shapes, &materials, nullptr, nullptr, path.c_str()));
-    const VkDeviceSize indexCount{shapes[0].mesh.indices.size()};
-    std::vector<Vertex> vertices{};
-    std::vector<uint16_t> indices{};
-
-    // load vertex and index data
-    for (auto &index : shapes[0].mesh.indices)
-    {
-        Vertex v{
-            .position = {attrib.vertices[index.vertex_index * 3], -attrib.vertices[index.vertex_index * 3 + 1],
-                         attrib.vertices[index.vertex_index * 3 + 2]},
-            .normal = {attrib.normals[index.normal_index * 3], -attrib.normals[index.normal_index * 3 + 1],
-                       attrib.normals[index.normal_index * 3 + 2]},
-            .uv = {attrib.texcoords[index.texcoord_index * 2], 1.0 - attrib.texcoords[index.texcoord_index * 2 + 1]}};
-        vertices.push_back(v);
-        indices.push_back(indices.size());
+    std::string warning, error;
+    auto materialDirectory = path.parent_path().string();
+    if (!materialDirectory.empty()) {
+        materialDirectory += std::filesystem::path::preferred_separator;
     }
-    VkDeviceSize vBufSize{sizeof(Vertex) * vertices.size()};
-    VkDeviceSize iBufSize{sizeof(uint16_t) * indices.size()};
-    VkBufferCreateInfo bufferCI{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                                .size = vBufSize + iBufSize,
-                                .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT};
-    VmaAllocationCreateInfo vBufferAllocCI{.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                                                    VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                                           .usage = VMA_MEMORY_USAGE_AUTO};
-    VmaAllocationInfo vBufferAllocInfo{};
-    chk(vmaCreateBuffer(context_.allocator(), &bufferCI, &vBufferAllocCI, &mesh_.buffer, &mesh_.allocation,
-                        &vBufferAllocInfo));
-    memcpy(vBufferAllocInfo.pMappedData, vertices.data(), vBufSize);
-    memcpy((char *)vBufferAllocInfo.pMappedData + vBufSize, indices.data(), iBufSize);
+    const bool loaded = tinyobj::LoadObj(&attrib, &shapes, &materials, &warning, &error,
+                                       filename.c_str(), materialDirectory.c_str(), true);
+    if (!warning.empty()) {
+        std::cerr << "Mesh '" << filename << "': " << warning << '\n';
+    }
+    if (!loaded || !error.empty()) {
+        fail(error.empty() ? "OBJ parser failed" : error);
+    }
+    if (attrib.vertices.size() % 3 != 0 || attrib.normals.size() % 3 != 0 || attrib.texcoords.size() % 2 != 0) {
+        fail("incomplete vertex attribute data");
+    }
+    std::size_t totalIndices = 0;
+    for (const auto& shape : shapes) {
+        if (shape.mesh.indices.size() % 3 != 0 ||
+            shape.mesh.num_face_vertices.size() != shape.mesh.indices.size() / 3 ||
+            std::any_of(shape.mesh.num_face_vertices.begin(), shape.mesh.num_face_vertices.end(),
+                        [](auto count) { return count != 3; })) {
+            fail("shape '" + shape.name + "' is not a triangulated mesh");
+        }
+        if (shape.mesh.indices.size() > std::numeric_limits<std::uint32_t>::max() - totalIndices) {
+            fail("too many indices for a 32-bit draw count");
+        }
+        totalIndices += shape.mesh.indices.size();
+    }
+    if (totalIndices == 0) {
+        fail("no triangles found");
+    }
+    // One expanded vertex and one sequential index per OBJ face corner.
+    constexpr auto bytesPerCorner = sizeof(Assets::Vertex) + sizeof(std::uint32_t);
+    if (totalIndices > std::numeric_limits<std::size_t>::max() / bytesPerCorner ||
+        totalIndices > std::numeric_limits<VkDeviceSize>::max() / bytesPerCorner) {
+        fail("mesh buffer size overflows");
+    }
+    MeshData data;
+    data.vertices.reserve(totalIndices);
+    data.indices.reserve(totalIndices);
+    auto validIndex = [](int index, std::size_t count) {
+        return index >= 0 && static_cast<std::size_t>(index) < count;
+    };
+    for (const auto& shape : shapes) {
+        for (const auto& index : shape.mesh.indices) {
+            const auto location = "shape '" + shape.name + "', corner " + std::to_string(data.indices.size());
+            if (!validIndex(index.vertex_index, attrib.vertices.size() / 3)) {
+                fail(location + ": missing or invalid position index " + std::to_string(index.vertex_index));
+            }
+            // Normals and UVs are required by this textured, lit renderer.
+            if (!validIndex(index.normal_index, attrib.normals.size() / 3)) {
+                fail(location + ": missing or invalid normal index " + std::to_string(index.normal_index));
+            }
+            if (!validIndex(index.texcoord_index, attrib.texcoords.size() / 2)) {
+                fail(location + ": missing or invalid UV index " + std::to_string(index.texcoord_index));
+            }
+            const auto position = static_cast<std::size_t>(index.vertex_index) * 3;
+            const auto normal = static_cast<std::size_t>(index.normal_index) * 3;
+            const auto uv = static_cast<std::size_t>(index.texcoord_index) * 2;
+            Assets::Vertex vertex{
+                .position = {attrib.vertices[position], -attrib.vertices[position + 1], attrib.vertices[position + 2]},
+                .normal = {attrib.normals[normal], -attrib.normals[normal + 1], attrib.normals[normal + 2]},
+                .uv = {attrib.texcoords[uv], 1.0f - attrib.texcoords[uv + 1]},
+            };
+            for (float value : {vertex.position.x, vertex.position.y, vertex.position.z,
+                                vertex.normal.x, vertex.normal.y, vertex.normal.z, vertex.uv.x, vertex.uv.y}) {
+                if (!std::isfinite(value)) {
+                    fail(location + ": non-finite vertex attribute");
+                }
+            }
+            data.indices.push_back(static_cast<std::uint32_t>(data.vertices.size()));
+            data.vertices.push_back(vertex);
+        }
+    }
+    return data;
+}
+} // namespace
+
+void Assets::loadMesh(const std::filesystem::path& path)
+{
+    // Finish all parsing and validation before allocating GPU resources.
+    const auto data = loadMeshData(path);
+    const VkDeviceSize vertexBytes = sizeof(Vertex) * data.vertices.size();
+    const VkDeviceSize indexBytes = sizeof(std::uint32_t) * data.indices.size();
+    VkBufferCreateInfo bufferInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = vertexBytes + indexBytes,
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+    };
+    VmaAllocationCreateInfo allocationInfo{
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO,
+    };
+    VmaAllocationInfo mappedInfo{};
+    chk(vmaCreateBuffer(context_.allocator(), &bufferInfo, &allocationInfo,
+                        &mesh_.buffer, &mesh_.allocation, &mappedInfo));
+    std::memcpy(mappedInfo.pMappedData, data.vertices.data(), static_cast<std::size_t>(vertexBytes));
+    std::memcpy(static_cast<char*>(mappedInfo.pMappedData) + vertexBytes,
+                data.indices.data(), static_cast<std::size_t>(indexBytes));
     chk(vmaFlushAllocation(context_.allocator(), mesh_.allocation, 0, VK_WHOLE_SIZE));
-    mesh_.indexOffset = vBufSize;
-    mesh_.indexCount = static_cast<uint32_t>(indexCount);
+    mesh_.indexOffset = vertexBytes;
+    mesh_.indexCount = static_cast<std::uint32_t>(data.indices.size());
+    mesh_.indexType = VK_INDEX_TYPE_UINT32;
 }
 
 Assets::Texture Assets::loadTexture(const std::filesystem::path &path)
