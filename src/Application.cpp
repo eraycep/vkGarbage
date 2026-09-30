@@ -4,6 +4,7 @@
 #include "Scene.hpp"
 #include "VulkanContext.hpp"
 #include "Window.hpp"
+#include "Light.hpp"
 
 #include <algorithm>
 #include <cstdlib>

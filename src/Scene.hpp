@@ -6,6 +6,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include "Light.hpp"
+
 #include <array>
 #include <cstdint>
 
@@ -20,6 +22,7 @@ public:
         glm::mat4 view{1.0f};
         glm::mat4 model[objectCount]{};
         glm::vec4 lightPos{0.0f, -10.0f, 10.0f, 0.0f};
+        glm::vec4 lightColorIntensity{1.0f, 1.0f, 1.0f, 1.0f};
         std::uint32_t selected{1};
     };
 
@@ -43,6 +46,7 @@ private:
     std::array<glm::vec3, objectCount> objectPositions_{};
     std::array<glm::vec3, objectCount> objectRotations_{};
     glm::vec4 lightPosition_{0.0f, -10.0f, 10.0f, 0.0f};
+    std::array<PointLight, 1> lights_;
     std::uint32_t selectedObject_{1};
     float fieldOfViewDegrees_{45.0f};
     float nearPlane_{0.1f};

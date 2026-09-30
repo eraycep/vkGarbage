@@ -17,6 +17,7 @@ struct ShaderData {
     float4x4 view;
     float4x4 model[3];
     float4 lightPos;
+    float4 lightColorIntensity;
     uint32_t selected;
 };
 
@@ -47,7 +48,7 @@ VSOutput main(VSInput input, uniform ShaderData *shaderData, uint instanceIndex 
 }
 
 [shader("fragment")]
-float4 main(VSOutput input) {
+float4 main(VSOutput input, uniform ShaderData *shaderData) {
     // Phong lighting
     float3 N = normalize(input.Normal);
     float3 L = normalize(input.LightVec);
@@ -55,7 +56,8 @@ float4 main(VSOutput input) {
     float3 R = reflect(-L, N);
     float3 diffuse = max(dot(N, L), 0.0025);
     float3 specular = pow(max(dot(R, V), 0.0), 16.0) * 0.75;
+    float3 lightColor = shaderData->lightColorIntensity.rgb * shaderData->lightColorIntensity.w;
     // Sample from texture
     float3 color = textures[NonUniformResourceIndex(input.InstanceIndex)].Sample(input.UV).rgb * input.Factor;
-    return float4(diffuse * color.rgb + specular, 1.0);
+    return float4((diffuse * color.rgb + specular) * lightColor, 1.0);
 }

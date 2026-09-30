@@ -1,4 +1,5 @@
 #include "Scene.hpp"
+#include "Light.hpp"
 
 Scene::Scene()
 {
@@ -77,7 +78,8 @@ Scene::ShaderData Scene::shaderData(float aspectRatio) const
         data.model[i] = glm::translate(glm::mat4(1.0f), objectPositions_[i]) *
             glm::mat4_cast(glm::quat(objectRotations_[i]));
     }
-    data.lightPos = lightPosition_;
+    data.lightPos = glm::vec4(lights_[0].position, 1.0f);
+    data.lightColorIntensity = glm::vec4(lights_[0].color, lights_[0].intensity);
     data.selected = selectedObject_;
     return data;
 }

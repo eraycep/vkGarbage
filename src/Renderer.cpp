@@ -244,7 +244,7 @@ void Renderer::createDescriptors()
 
 void Renderer::createPipeline()
 {
-    VkPushConstantRange pushConstantRange{ .stageFlags = VK_SHADER_STAGE_VERTEX_BIT, .size = sizeof(VkDeviceAddress) };
+    VkPushConstantRange pushConstantRange{ .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, .size = sizeof(VkDeviceAddress) };
     VkPipelineLayoutCreateInfo pipelineLayoutCI{ .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1, .pSetLayouts = &textureSetLayout_, .pushConstantRangeCount = 1, .pPushConstantRanges = &pushConstantRange };
     chk(vkCreatePipelineLayout(context_.device(), &pipelineLayoutCI, nullptr, &pipelineLayout_));
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages{
@@ -379,7 +379,7 @@ void Renderer::recordCommands()
     VkDeviceSize vOffset{ 0 };
     vkCmdBindVertexBuffers(cb, 0, 1, &assets_.mesh().buffer, &vOffset);
     vkCmdBindIndexBuffer(cb, assets_.mesh().buffer, assets_.mesh().indexOffset, assets_.mesh().indexType);
-    vkCmdPushConstants(cb, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VkDeviceAddress), &frames_[frameIndex_].shaderDataAddress);
+    vkCmdPushConstants(cb, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VkDeviceAddress), &frames_[frameIndex_].shaderDataAddress);
     vkCmdDrawIndexed(cb, assets_.mesh().indexCount, Scene::objectCount, 0, 0, 0);
     vkCmdEndRendering(cb);
     VkImageMemoryBarrier2 barrierPresent{
