@@ -13,9 +13,38 @@ void Scene::rotateSelected(const glm::vec2& deltaRadians)
     objectRotations_[selectedObject_].y += deltaRadians.y;
 }
 
-void Scene::moveCamera(float deltaZ)
+void Scene::rotateCamera(float x, float y)
 {
-    cameraPosition_.z += deltaZ;
+    yaw += x;
+    pitch += y;
+
+    if (pitch > 89.0f) {
+        pitch = 89.0f;
+    }
+    if (pitch < -89.0f) {
+        pitch = -89.0f;
+    }
+
+    glm::vec3 front;
+	front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+	front.y = sin(glm::radians(pitch));
+	front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraFront_ = glm::normalize(front);
+
+    glm::vec3 right = glm::cross(front, worldUp_);
+    cameraUp_ = glm::cross(right, front);
+}
+
+void Scene::moveCamera(float forwardDistance)
+{
+    moveCamera(glm::vec3{0.0f, 0.0f, forwardDistance});
+}
+
+void Scene::moveCamera(glm::vec3 delta)
+{
+    const glm::vec3 right = glm::normalize(glm::cross(cameraFront_, worldUp_));
+    const glm::vec3 up = glm::normalize(glm::cross(right, cameraFront_));
+    cameraPosition_ += right * delta.x + up * delta.y + cameraFront_ * delta.z;
 }
 
 void Scene::selectNext()
@@ -42,7 +71,8 @@ Scene::ShaderData Scene::shaderData(float aspectRatio) const
 {
     ShaderData data{};
     data.projection = glm::perspective(glm::radians(fieldOfViewDegrees_), aspectRatio, nearPlane_, farPlane_);
-    data.view = glm::translate(glm::mat4(1.0f), cameraPosition_);
+    data.view = glm::lookAt(cameraPosition_, cameraPosition_ + cameraFront_, cameraUp_);
+    // data.view = glm::translate(glm::mat4(1.0f), cameraPosition_);
     for (std::uint32_t i = 0; i < objectCount; ++i) {
         data.model[i] = glm::translate(glm::mat4(1.0f), objectPositions_[i]) *
             glm::mat4_cast(glm::quat(objectRotations_[i]));

@@ -13,6 +13,9 @@ class Renderer;
 // Owns the components and coordinates initialization, input, rendering, and shutdown.
 class Application {
 public:
+    static constexpr float movementSpeed_ = 10.0f;
+    static constexpr float cameraSensitivity_ = 0.2f;
+
     explicit Application(std::uint32_t deviceIndex = 0);
     ~Application();
     Application(const Application&) = delete;
@@ -23,6 +26,7 @@ public:
 private:
     void initialize();
     void processEvents(float deltaSeconds);
+    void updateMovement(float deltaSeconds);
     void handleEvent(const SDL_Event& event, float deltaSeconds);
     void shutdown();
 
