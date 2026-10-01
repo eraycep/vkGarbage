@@ -33,7 +33,7 @@ Assets::~Assets()
 void Assets::load(const std::filesystem::path &directory)
 {
     chk(mesh_.buffer == VK_NULL_HANDLE); // load() is a one-time operation.
-    compileShader(directory / "shader.slang");
+    shader_ = std::make_unique<Shader>(context_.device(), directory / "shader.slang");
     loadMesh(directory / "suzanne.obj");
     for (std::size_t i = 0; i < textures_.size(); ++i)
     {
@@ -301,59 +301,6 @@ Assets::Texture Assets::loadTexture(const std::filesystem::path &path)
     return texture;
 }
 
-void Assets::compileShader(const std::filesystem::path& path)
-{
-    if (SLANG_FAILED(slang::createGlobalSession(slangGlobalSession_.writeRef()))) {
-		std::cerr << "Could not initialize the Slang compiler\n";
-		std::exit(EXIT_FAILURE);
-	}
-
-    auto slangTargets{ std::to_array<slang::TargetDesc>({ {
-        .format{SLANG_SPIRV},
-        .profile{slangGlobalSession_->findProfile("spirv_1_4")}
-    } })};
-    auto slangOptions{ std::to_array<slang::CompilerOptionEntry>({ {
-        slang::CompilerOptionName::EmitSpirvDirectly,
-        {slang::CompilerOptionValueKind::Int, 1}
-    } })};
-    slang::SessionDesc slangSessionDesc{
-        .targets{slangTargets.data()},
-        .targetCount{SlangInt(slangTargets.size())},
-        .defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR,
-        .compilerOptionEntries{slangOptions.data()},
-        .compilerOptionEntryCount{uint32_t(slangOptions.size())}
-    };
-
-    Slang::ComPtr<slang::ISession> slangSession;
-	if (SLANG_FAILED(slangGlobalSession_->createSession(slangSessionDesc, slangSession.writeRef()))) {
-		std::cerr << "Could not create the Slang session\n";
-		std::exit(EXIT_FAILURE);
-	}
-
-	Slang::ComPtr<ISlangBlob> diagnostics;
-	Slang::ComPtr<slang::IModule> slangModule{ slangSession->loadModule(path.string().c_str(), diagnostics.writeRef()) };
-	if (diagnostics) {
-		std::cerr << static_cast<const char*>(diagnostics->getBufferPointer());
-	}
-	if (!slangModule) {
-		std::cerr << "Could not load assets/shader.slang\n";
-		std::exit(EXIT_FAILURE);
-	}
-	Slang::ComPtr<ISlangBlob> spirv;
-	diagnostics.setNull();
-	SlangResult compileResult = slangModule->getTargetCode(0, spirv.writeRef(), diagnostics.writeRef());
-	if (diagnostics) {
-		std::cerr << static_cast<const char*>(diagnostics->getBufferPointer());
-	}
-	if (SLANG_FAILED(compileResult) || !spirv) {
-		std::cerr << "Could not compile assets/shader.slang to SPIR-V\n";
-		std::exit(EXIT_FAILURE);
-	}
-
-    VkShaderModuleCreateInfo shaderModuleCI{ .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, .codeSize = spirv->getBufferSize(), .pCode = (uint32_t*)spirv->getBufferPointer() };
-    chk(vkCreateShaderModule(context_.device(), &shaderModuleCI, nullptr, &shaderModule_));
-}
-
 VkCommandBuffer Assets::beginUpload()
 {
     VkCommandBuffer cbOneTime{};
@@ -397,7 +344,7 @@ void Assets::cleanup()
         vmaDestroyImage(context_.allocator(), texture.image, texture.allocation);
     }
     vmaDestroyBuffer(context_.allocator(), mesh_.buffer, mesh_.allocation);
-    vkDestroyShaderModule(context_.device(), shaderModule_, nullptr);
+    shader_.reset();
     vkDestroyCommandPool(context_.device(), uploadCommandPool_, nullptr);
 }
 
@@ -413,5 +360,5 @@ std::span<const Assets::Texture> Assets::textures() const
 
 VkShaderModule Assets::shaderModule() const
 {
-    return shaderModule_;
+    return shader_ ? shader_->module() : VK_NULL_HANDLE;
 }

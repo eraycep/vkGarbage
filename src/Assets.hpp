@@ -3,8 +3,8 @@
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
 #include <glm/glm.hpp>
-#include <slang/slang.h>
-#include <slang/slang-com-ptr.h>
+#include "Shader.hpp"
+#include <memory>
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -51,7 +51,6 @@ public:
 private:
     void loadMesh(const std::filesystem::path& path);
     Texture loadTexture(const std::filesystem::path& path);
-    void compileShader(const std::filesystem::path& path);
     VkCommandBuffer beginUpload();
     void submitUploadAndWait(VkCommandBuffer commandBuffer);
     void cleanup();
@@ -59,7 +58,6 @@ private:
     VulkanContext& context_; // Non-owning; context outlives Assets.
     Mesh mesh_{};
     std::array<Texture, 3> textures_{};
-    VkShaderModule shaderModule_{VK_NULL_HANDLE};
-    Slang::ComPtr<slang::IGlobalSession> slangGlobalSession_;
+    std::unique_ptr<Shader> shader_;
     VkCommandPool uploadCommandPool_{VK_NULL_HANDLE};
 };

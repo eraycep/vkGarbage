@@ -71,6 +71,7 @@ glm::vec3 Scene::cameraPosition() const
 Scene::ShaderData Scene::shaderData(float aspectRatio) const
 {
     ShaderData data{};
+
     data.projection = glm::perspective(glm::radians(fieldOfViewDegrees_), aspectRatio, nearPlane_, farPlane_);
     data.view = glm::lookAt(cameraPosition_, cameraPosition_ + cameraFront_, cameraUp_);
     // data.view = glm::translate(glm::mat4(1.0f), cameraPosition_);
@@ -78,7 +79,26 @@ Scene::ShaderData Scene::shaderData(float aspectRatio) const
         data.model[i] = glm::translate(glm::mat4(1.0f), objectPositions_[i]) *
             glm::mat4_cast(glm::quat(objectRotations_[i]));
     }
-    data.lightPos = glm::vec4(lights_[0].position, 1.0f);
+    // Lighting uses view space; the editable light stays in world space.
+    data.lightPos = data.view * glm::vec4(lights_[0].position, 1.0f);
+    const glm::vec3 lightDirection = glm::normalize(
+        glm::mat3(data.view) * lights_[0].direction);
+    data.lightDirectionOuterCos = glm::vec4(lightDirection,
+        glm::cos(glm::radians(lights_[0].outerConeDegrees)));
+    // The shadow matrix transforms world-space positions, independently of the camera.
+    const auto& light = lights_[0];
+    const glm::vec3 worldLightDirection = glm::normalize(light.direction);
+    const glm::vec3 lightUp = glm::abs(glm::dot(worldLightDirection, worldUp_)) > 0.99f
+        ? glm::vec3{0.0f, 0.0f, 1.0f} : worldUp_;
+    const glm::mat4 lightView = glm::lookAt(
+        light.position, light.position + worldLightDirection, lightUp);
+    const glm::mat4 lightProjection = glm::perspective(
+        glm::radians(light.outerConeDegrees * 2.0f), 1.0f,
+        light.shadowNearPlane, light.shadowFarPlane);
+    data.lightViewProjection = lightProjection * lightView;
+    data.lightCone = glm::vec4(glm::cos(glm::radians(lights_[0].innerConeDegrees)),
+        0.0f, 0.0f, 0.0f);
+    
     data.lightColorIntensity = glm::vec4(lights_[0].color, lights_[0].intensity);
     data.selected = selectedObject_;
     return data;

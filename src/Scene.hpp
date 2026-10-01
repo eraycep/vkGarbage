@@ -23,6 +23,12 @@ public:
         glm::mat4 model[objectCount]{};
         glm::vec4 lightPos{0.0f, -10.0f, 10.0f, 0.0f};
         glm::vec4 lightColorIntensity{1.0f, 1.0f, 1.0f, 1.0f};
+        // View-space direction (xyz), cosine of the outer half angle (w).
+        glm::vec4 lightDirectionOuterCos{};
+        // World space to light clip space; depth is in [0, 1].
+        glm::mat4 lightViewProjection{1.0f};
+        // x: cosine of the inner half angle; yzw reserved.
+        glm::vec4 lightCone{};
         std::uint32_t selected{1};
     };
 
@@ -45,8 +51,7 @@ private:
     glm::vec3 worldUp_{0.0f, 1.0f, 0.0f};
     std::array<glm::vec3, objectCount> objectPositions_{};
     std::array<glm::vec3, objectCount> objectRotations_{};
-    glm::vec4 lightPosition_{0.0f, -10.0f, 10.0f, 0.0f};
-    std::array<PointLight, 1> lights_;
+    std::array<SpotLight, 1> lights_;
     std::uint32_t selectedObject_{1};
     float fieldOfViewDegrees_{45.0f};
     float nearPlane_{0.1f};

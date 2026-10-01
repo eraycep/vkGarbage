@@ -77,12 +77,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/")
 add_executable(${NAME} main.cpp assets/shader.slang)
 target_sources(${NAME} PRIVATE
     src/Common.hpp
+    src/Shader.cpp src/Shader.hpp
     src/Application.cpp src/Application.hpp
     src/Window.cpp src/Window.hpp
     src/Renderer.cpp src/Renderer.hpp
     src/Scene.cpp src/Scene.hpp
     src/VulkanContext.cpp src/VulkanContext.hpp
-    src/Assets.cpp src/Assets.hpp
+    src/Assets.cpp src/Assets.hpp src/ShadowMap.cpp
+    src/ShadowMap.hpp
 )
 target_compile_definitions(${NAME} PRIVATE VK_NO_PROTOTYPES)
 target_include_directories(${NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
