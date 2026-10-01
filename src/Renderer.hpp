@@ -56,7 +56,7 @@ private:
     // Marks resize requests; caller skips recording on OUT_OF_DATE.
     VkResult acquireNextImage();
     // Call only after successful acquisition (SUCCESS or SUBOPTIMAL).
-    void recordCommands();
+    void recordCommands(const Scene& scene);
     // Submit the recorded frame, handle presentation status, and advance the frame.
     void submitAndPresent();
 

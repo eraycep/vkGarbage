@@ -143,10 +143,10 @@ void Assets::loadMesh(const std::filesystem::path& path)
     const auto floorVertex = static_cast<std::uint32_t>(data.vertices.size());
     // This scene uses +Y downward. The floor faces upward, toward -Y.
     data.vertices.insert(data.vertices.end(), {
-        {{-8.0f, 1.5f, -8.0f}, {0, -1, 0}, {0, 0}},
-        {{ 8.0f, 1.5f, -8.0f}, {0, -1, 0}, {1, 0}},
-        {{ 8.0f, 1.5f,  8.0f}, {0, -1, 0}, {1, 1}},
-        {{-8.0f, 1.5f,  8.0f}, {0, -1, 0}, {0, 1}}
+        {{-1.0f, 0.0f, -1.0f}, {0, -1, 0}, {0, 0}},
+        {{ 1.0f, 0.0f, -1.0f}, {0, -1, 0}, {1, 0}},
+        {{ 1.0f, 0.0f,  1.0f}, {0, -1, 0}, {1, 1}},
+        {{-1.0f, 0.0f,  1.0f}, {0, -1, 0}, {0, 1}}
     });
     for (std::uint32_t index : {0u, 1u, 2u, 0u, 2u, 3u}) {
         data.indices.push_back(floorVertex + index);
@@ -170,9 +170,8 @@ void Assets::loadMesh(const std::filesystem::path& path)
                 data.indices.data(), static_cast<std::size_t>(indexBytes));
     chk(vmaFlushAllocation(context_.allocator(), mesh_.allocation, 0, VK_WHOLE_SIZE));
     mesh_.indexOffset = vertexBytes;
-    mesh_.indexCount = meshIndexCount;
-    mesh_.floorFirstIndex = meshIndexCount;
-    mesh_.floorIndexCount = 6;
+    mesh_.ranges[static_cast<std::size_t>(MeshId::Suzanne)] = {0, meshIndexCount};
+    mesh_.ranges[static_cast<std::size_t>(MeshId::Plane)] = {meshIndexCount, 6};
     mesh_.indexType = VK_INDEX_TYPE_UINT32;
 }
 

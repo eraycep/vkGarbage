@@ -3,15 +3,19 @@
 
 Scene::Scene()
 {
-    for (std::uint32_t i = 0; i < objectCount; ++i) {
-        objectPositions_[i] = { (static_cast<float>(i) - 1.0f) * 3.0f, 0.0f, 0.0f };
-    }
+    objects_ = {{
+        {.position = {-3, 0, 0}, .textureIndex = 0},
+        {.position = { 0, 0, 0}, .textureIndex = 1},
+        {.position = { 3, 0, 0}, .textureIndex = 2},
+        {.position = {0, 1.5f, 0}, .scale = {8, 1, 8},
+         .mesh = MeshId::Plane, .color = {0.65f, 0.65f, 0.65f}, .selectable = false}
+    }};
 }
 
 void Scene::rotateSelected(const glm::vec2& deltaRadians)
 {
-    objectRotations_[selectedObject_].x += deltaRadians.x;
-    objectRotations_[selectedObject_].y += deltaRadians.y;
+    objects_[selectedObject_].rotation.x += deltaRadians.x;
+    objects_[selectedObject_].rotation.y += deltaRadians.y;
 }
 
 void Scene::rotateCamera(float x, float y)
@@ -50,12 +54,18 @@ void Scene::moveCamera(glm::vec3 delta)
 
 void Scene::selectNext()
 {
-    selectedObject_ = (selectedObject_ + 1) % objectCount;
+    for (std::uint32_t step = 1; step <= objectCount; ++step) {
+        const auto next = (selectedObject_ + step) % objectCount;
+        if (objects_[next].selectable) { selectedObject_ = next; break; }
+    }
 }
 
 void Scene::selectPrevious()
 {
-    selectedObject_ = (selectedObject_ + objectCount - 1) % objectCount;
+    for (std::uint32_t step = 1; step <= objectCount; ++step) {
+        const auto next = (selectedObject_ + objectCount - step) % objectCount;
+        if (objects_[next].selectable) { selectedObject_ = next; break; }
+    }
 }
 
 std::uint32_t Scene::selectedObject() const
@@ -76,10 +86,13 @@ Scene::ShaderData Scene::shaderData(float aspectRatio) const
     data.view = glm::lookAt(cameraPosition_, cameraPosition_ + cameraFront_, cameraUp_);
     // data.view = glm::translate(glm::mat4(1.0f), cameraPosition_);
     for (std::uint32_t i = 0; i < objectCount; ++i) {
-        data.model[i] = glm::translate(glm::mat4(1.0f), objectPositions_[i]) *
-            glm::mat4_cast(glm::quat(objectRotations_[i]));
+        const auto& object = objects_[i];
+        data.model[i] = glm::translate(glm::mat4(1.0f), object.position) *
+            glm::mat4_cast(glm::quat(object.rotation)) *
+            glm::scale(glm::mat4(1.0f), object.scale);
+        data.normalMatrix[i] = glm::transpose(glm::inverse(data.view * data.model[i]));
+        data.objectAppearance[i] = glm::vec4(object.color, static_cast<float>(object.textureIndex));
     }
-    data.model[floorInstance] = glm::mat4(1.0f);
     // Lighting uses view space; the editable light stays in world space.
     data.lightPos = data.view * glm::vec4(lights_[0].position, 1.0f);
     const glm::vec3 lightDirection = glm::normalize(

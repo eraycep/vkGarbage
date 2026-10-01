@@ -81,7 +81,7 @@ target_sources(${NAME} PRIVATE
     src/Application.cpp src/Application.hpp
     src/Window.cpp src/Window.hpp
     src/Renderer.cpp src/Renderer.hpp
-    src/Scene.cpp src/Scene.hpp
+    src/Scene.cpp src/Scene.hpp src/SceneObject.hpp
     src/VulkanContext.cpp src/VulkanContext.hpp
     src/Assets.cpp src/Assets.hpp src/ShadowMap.cpp
     src/ShadowMap.hpp

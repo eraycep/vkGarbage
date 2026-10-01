@@ -4,6 +4,7 @@
 #include <vma/vk_mem_alloc.h>
 #include <glm/glm.hpp>
 #include "Shader.hpp"
+#include "SceneObject.hpp"
 #include <memory>
 #include <array>
 #include <cstdint>
@@ -22,13 +23,16 @@ public:
         glm::vec2 uv{};
     };
 
+    struct DrawRange {
+        std::uint32_t firstIndex{0};
+        std::uint32_t indexCount{0};
+    };
+
     struct Mesh {
         VkBuffer buffer{VK_NULL_HANDLE};
         VmaAllocation allocation{VK_NULL_HANDLE};
         VkDeviceSize indexOffset{0}; // Vertex and index data share one buffer.
-        std::uint32_t indexCount{0};
-        std::uint32_t floorFirstIndex{0};
-        std::uint32_t floorIndexCount{0};
+        std::array<DrawRange, static_cast<std::size_t>(MeshId::Count)> ranges{};
         VkIndexType indexType{VK_INDEX_TYPE_UINT32};
     };
 

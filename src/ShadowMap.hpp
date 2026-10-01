@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <vector>
+#include <span>
 
 class VulkanContext;
 
@@ -19,7 +20,7 @@ public:
     ShadowMap(const ShadowMap&) = delete;
     ShadowMap& operator=(const ShadowMap&) = delete;
 
-    void Render(VkCommandBuffer& cb, VkDeviceAddress shaderDataAddress, const Assets::Mesh& mesh, uint32_t instanceCount);
+    void Render(VkCommandBuffer& cb, VkDeviceAddress shaderDataAddress, const Assets::Mesh& mesh, std::span<const SceneObject> objects);
 
     VkDescriptorImageInfo descriptorInfo() const;
 

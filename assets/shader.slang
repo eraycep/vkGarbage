@@ -17,6 +17,8 @@ struct ShaderData {
     float4x4 projection;
     float4x4 view;
     float4x4 model[4];
+    float4x4 normalMatrix[4];
+    float4 objectAppearance[4];
     float4 lightPos;
     float4 lightColorIntensity;
     float4 lightDirectionOuterCos;
@@ -40,7 +42,7 @@ struct VSOutput {
 VSOutput main(VSInput input, uniform ShaderData *shaderData, uint instanceIndex : SV_VulkanInstanceID) {
     VSOutput output;
     float4x4 modelMat = shaderData->model[instanceIndex];
-    output.Normal = mul((float3x3)mul(shaderData->view, modelMat), input.Normal);
+    output.Normal = mul((float3x3)shaderData->normalMatrix[instanceIndex], input.Normal);
     output.UV = input.UV;
     output.Pos = mul(shaderData->projection, mul(shaderData->view, mul(modelMat, float4(input.Pos.xyz, 1.0))));
     output.Factor = (shaderData->selected == instanceIndex ? 3.0f : 1.0f);
@@ -84,13 +86,11 @@ float4 main(VSOutput input, uniform ShaderData *shaderData) {
     float cone = smoothstep(shaderData->lightDirectionOuterCos.w,
                             shaderData->lightCone.x, coneCos);
     float3 lightColor = shaderData->lightColorIntensity.rgb * shaderData->lightColorIntensity.w;
-    // Sample from texture
-    // The floor has no texture descriptor; use a neutral shadow receiver.
-    float3 color;
-    if (input.InstanceIndex == 3) {
-        color = float3(0.65, 0.65, 0.65);
-    } else {
-        color = textures[NonUniformResourceIndex(input.InstanceIndex)].Sample(input.UV).rgb * input.Factor;
+    float4 appearance = shaderData->objectAppearance[input.InstanceIndex];
+    float3 color = appearance.rgb * input.Factor;
+    int textureIndex = int(appearance.w);
+    if (textureIndex >= 0) {
+        color *= textures[NonUniformResourceIndex(textureIndex)].Sample(input.UV).rgb;
     }
     float3 ambient = 0.025 * color;
     float3 direct = (diffuse * color + specular) * lightColor * cone;

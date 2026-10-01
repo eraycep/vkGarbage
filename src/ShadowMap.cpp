@@ -21,7 +21,7 @@ ShadowMap::~ShadowMap()
     cleanup();
 }
 
-void ShadowMap::Render(VkCommandBuffer& cb, VkDeviceAddress shaderDataAddress, const Assets::Mesh& mesh, uint32_t instanceCount)
+void ShadowMap::Render(VkCommandBuffer& cb, VkDeviceAddress shaderDataAddress, const Assets::Mesh& mesh, std::span<const SceneObject> objects)
 {
     VkImageMemoryBarrier2 depthBarrier{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -64,8 +64,10 @@ void ShadowMap::Render(VkCommandBuffer& cb, VkDeviceAddress shaderDataAddress, c
     vkCmdBindVertexBuffers(cb, 0, 1, &mesh.buffer, &vOffset);
     vkCmdBindIndexBuffer(cb, mesh.buffer, mesh.indexOffset, mesh.indexType);
     vkCmdPushConstants(cb, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VkDeviceAddress), &shaderDataAddress);
-    vkCmdDrawIndexed(cb, mesh.indexCount, instanceCount, 0, 0, 0);
-    vkCmdDrawIndexed(cb, mesh.floorIndexCount, 1, mesh.floorFirstIndex, 0, Scene::floorInstance);
+    for (std::uint32_t i = 0; i < objects.size(); ++i) {
+        const auto& range = mesh.ranges[static_cast<std::size_t>(objects[i].mesh)];
+        vkCmdDrawIndexed(cb, range.indexCount, 1, range.firstIndex, 0, i);
+    }
     vkCmdEndRendering(cb);
 
     depthBarrier.srcStageMask =

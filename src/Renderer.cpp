@@ -41,7 +41,7 @@ bool Renderer::drawFrame(const Scene& scene)
     }
 
     updateShaderData(scene);
-    recordCommands();
+    recordCommands(scene);
     submitAndPresent();
     return true;
 }
@@ -324,7 +324,7 @@ VkResult Renderer::acquireNextImage()
     return result;
 }
 
-void Renderer::recordCommands()
+void Renderer::recordCommands(const Scene& scene)
 {
     chk(imageIndex_ < swapchainImages_.size());
     auto cb = frames_[frameIndex_].commandBuffer;
@@ -333,7 +333,7 @@ void Renderer::recordCommands()
     chk(vkBeginCommandBuffer(cb, &cbBI));
     
     // render shadow map
-    shadowMap_.Render(cb, frames_[frameIndex_].shaderDataAddress, assets_.mesh(), Scene::objectCount);
+    shadowMap_.Render(cb, frames_[frameIndex_].shaderDataAddress, assets_.mesh(), scene.objects());
 
     std::array<VkImageMemoryBarrier2, 2> outputBarriers{
         VkImageMemoryBarrier2{
@@ -402,9 +402,10 @@ void Renderer::recordCommands()
     vkCmdBindVertexBuffers(cb, 0, 1, &assets_.mesh().buffer, &vOffset);
     vkCmdBindIndexBuffer(cb, assets_.mesh().buffer, assets_.mesh().indexOffset, assets_.mesh().indexType);
     vkCmdPushConstants(cb, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VkDeviceAddress), &frames_[frameIndex_].shaderDataAddress);
-    vkCmdDrawIndexed(cb, assets_.mesh().indexCount, Scene::objectCount, 0, 0, 0);
-    vkCmdDrawIndexed(cb, assets_.mesh().floorIndexCount, 1,
-                     assets_.mesh().floorFirstIndex, 0, Scene::floorInstance);
+    for (std::uint32_t i = 0; i < scene.objects().size(); ++i) {
+        const auto& range = assets_.mesh().ranges[static_cast<std::size_t>(scene.objects()[i].mesh)];
+        vkCmdDrawIndexed(cb, range.indexCount, 1, range.firstIndex, 0, i);
+    }
     vkCmdEndRendering(cb);
     VkImageMemoryBarrier2 barrierPresent{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,

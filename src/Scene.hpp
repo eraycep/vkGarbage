@@ -7,6 +7,8 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include "Light.hpp"
+#include "SceneObject.hpp"
+#include <span>
 
 #include <array>
 #include <cstdint>
@@ -14,15 +16,16 @@
 // CPU scene state, independent of SDL and Vulkan resource management.
 class Scene {
 public:
-    static constexpr std::uint32_t objectCount = 3;
-    static constexpr std::uint32_t floorInstance = objectCount;
-    static constexpr std::uint32_t modelCount = objectCount + 1;
+    static constexpr std::uint32_t objectCount = 4;
 
     // Matches the existing shader data layout in assets/shader.slang.
     struct ShaderData {
         glm::mat4 projection{1.0f};
         glm::mat4 view{1.0f};
-        glm::mat4 model[modelCount]{};
+        glm::mat4 model[objectCount]{};
+        glm::mat4 normalMatrix[objectCount]{};
+        // RGB tint, W texture index (-1 for untextured objects).
+        glm::vec4 objectAppearance[objectCount]{};
         glm::vec4 lightPos{0.0f, -10.0f, 10.0f, 0.0f};
         glm::vec4 lightColorIntensity{1.0f, 1.0f, 1.0f, 1.0f};
         // View-space direction (xyz), cosine of the outer half angle (w).
@@ -35,6 +38,7 @@ public:
     };
 
     Scene();
+    std::span<const SceneObject> objects() const { return objects_; }
     void rotateSelected(const glm::vec2& deltaRadians);
     void rotateCamera(float x, float y);
     void moveCamera(float forwardDistance);
@@ -51,8 +55,7 @@ private:
     glm::vec3 cameraFront_{0.0f, 0.0f, -1.0f};
     glm::vec3 cameraUp_{0.0f, 1.0f, 0.0f};
     glm::vec3 worldUp_{0.0f, 1.0f, 0.0f};
-    std::array<glm::vec3, objectCount> objectPositions_{};
-    std::array<glm::vec3, objectCount> objectRotations_{};
+    std::array<SceneObject, objectCount> objects_{};
     std::array<SpotLight, 1> lights_;
     std::uint32_t selectedObject_{1};
     float fieldOfViewDegrees_{45.0f};
