@@ -138,7 +138,19 @@ MeshData loadMeshData(const std::filesystem::path& path)
 void Assets::loadMesh(const std::filesystem::path& path)
 {
     // Finish all parsing and validation before allocating GPU resources.
-    const auto data = loadMeshData(path);
+    auto data = loadMeshData(path);
+    const auto meshIndexCount = static_cast<std::uint32_t>(data.indices.size());
+    const auto floorVertex = static_cast<std::uint32_t>(data.vertices.size());
+    // This scene uses +Y downward. The floor faces upward, toward -Y.
+    data.vertices.insert(data.vertices.end(), {
+        {{-8.0f, 1.5f, -8.0f}, {0, -1, 0}, {0, 0}},
+        {{ 8.0f, 1.5f, -8.0f}, {0, -1, 0}, {1, 0}},
+        {{ 8.0f, 1.5f,  8.0f}, {0, -1, 0}, {1, 1}},
+        {{-8.0f, 1.5f,  8.0f}, {0, -1, 0}, {0, 1}}
+    });
+    for (std::uint32_t index : {0u, 1u, 2u, 0u, 2u, 3u}) {
+        data.indices.push_back(floorVertex + index);
+    }
     const VkDeviceSize vertexBytes = sizeof(Vertex) * data.vertices.size();
     const VkDeviceSize indexBytes = sizeof(std::uint32_t) * data.indices.size();
     VkBufferCreateInfo bufferInfo{
@@ -158,7 +170,9 @@ void Assets::loadMesh(const std::filesystem::path& path)
                 data.indices.data(), static_cast<std::size_t>(indexBytes));
     chk(vmaFlushAllocation(context_.allocator(), mesh_.allocation, 0, VK_WHOLE_SIZE));
     mesh_.indexOffset = vertexBytes;
-    mesh_.indexCount = static_cast<std::uint32_t>(data.indices.size());
+    mesh_.indexCount = meshIndexCount;
+    mesh_.floorFirstIndex = meshIndexCount;
+    mesh_.floorIndexCount = 6;
     mesh_.indexType = VK_INDEX_TYPE_UINT32;
 }
 

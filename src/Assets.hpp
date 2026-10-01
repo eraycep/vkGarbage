@@ -27,6 +27,8 @@ public:
         VmaAllocation allocation{VK_NULL_HANDLE};
         VkDeviceSize indexOffset{0}; // Vertex and index data share one buffer.
         std::uint32_t indexCount{0};
+        std::uint32_t floorFirstIndex{0};
+        std::uint32_t floorIndexCount{0};
         VkIndexType indexType{VK_INDEX_TYPE_UINT32};
     };
 

@@ -2,6 +2,7 @@
 #include "VulkanContext.hpp"
 #include "Common.hpp"
 #include "Shader.hpp"
+#include "Scene.hpp"
 #include <stdexcept>
 
 ShadowMap::ShadowMap(VulkanContext& vulkanContext) : context_(vulkanContext)
@@ -64,6 +65,7 @@ void ShadowMap::Render(VkCommandBuffer& cb, VkDeviceAddress shaderDataAddress, c
     vkCmdBindIndexBuffer(cb, mesh.buffer, mesh.indexOffset, mesh.indexType);
     vkCmdPushConstants(cb, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VkDeviceAddress), &shaderDataAddress);
     vkCmdDrawIndexed(cb, mesh.indexCount, instanceCount, 0, 0, 0);
+    vkCmdDrawIndexed(cb, mesh.floorIndexCount, 1, mesh.floorFirstIndex, 0, Scene::floorInstance);
     vkCmdEndRendering(cb);
 
     depthBarrier.srcStageMask =

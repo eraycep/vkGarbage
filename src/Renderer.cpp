@@ -403,6 +403,8 @@ void Renderer::recordCommands()
     vkCmdBindIndexBuffer(cb, assets_.mesh().buffer, assets_.mesh().indexOffset, assets_.mesh().indexType);
     vkCmdPushConstants(cb, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VkDeviceAddress), &frames_[frameIndex_].shaderDataAddress);
     vkCmdDrawIndexed(cb, assets_.mesh().indexCount, Scene::objectCount, 0, 0, 0);
+    vkCmdDrawIndexed(cb, assets_.mesh().floorIndexCount, 1,
+                     assets_.mesh().floorFirstIndex, 0, Scene::floorInstance);
     vkCmdEndRendering(cb);
     VkImageMemoryBarrier2 barrierPresent{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,

@@ -79,6 +79,7 @@ Scene::ShaderData Scene::shaderData(float aspectRatio) const
         data.model[i] = glm::translate(glm::mat4(1.0f), objectPositions_[i]) *
             glm::mat4_cast(glm::quat(objectRotations_[i]));
     }
+    data.model[floorInstance] = glm::mat4(1.0f);
     // Lighting uses view space; the editable light stays in world space.
     data.lightPos = data.view * glm::vec4(lights_[0].position, 1.0f);
     const glm::vec3 lightDirection = glm::normalize(

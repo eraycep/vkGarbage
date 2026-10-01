@@ -16,7 +16,7 @@ struct VSInput {
 struct ShaderData {
     float4x4 projection;
     float4x4 view;
-    float4x4 model[3];
+    float4x4 model[4];
     float4 lightPos;
     float4 lightColorIntensity;
     float4 lightDirectionOuterCos;
@@ -85,7 +85,13 @@ float4 main(VSOutput input, uniform ShaderData *shaderData) {
                             shaderData->lightCone.x, coneCos);
     float3 lightColor = shaderData->lightColorIntensity.rgb * shaderData->lightColorIntensity.w;
     // Sample from texture
-    float3 color = textures[NonUniformResourceIndex(input.InstanceIndex)].Sample(input.UV).rgb * input.Factor;
+    // The floor has no texture descriptor; use a neutral shadow receiver.
+    float3 color;
+    if (input.InstanceIndex == 3) {
+        color = float3(0.65, 0.65, 0.65);
+    } else {
+        color = textures[NonUniformResourceIndex(input.InstanceIndex)].Sample(input.UV).rgb * input.Factor;
+    }
     float3 ambient = 0.025 * color;
     float3 direct = (diffuse * color + specular) * lightColor * cone;
     float visibility = shadowVisibility(input.LightClipPosition, diffuse);

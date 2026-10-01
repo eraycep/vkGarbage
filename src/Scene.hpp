@@ -15,12 +15,14 @@
 class Scene {
 public:
     static constexpr std::uint32_t objectCount = 3;
+    static constexpr std::uint32_t floorInstance = objectCount;
+    static constexpr std::uint32_t modelCount = objectCount + 1;
 
     // Matches the existing shader data layout in assets/shader.slang.
     struct ShaderData {
         glm::mat4 projection{1.0f};
         glm::mat4 view{1.0f};
-        glm::mat4 model[objectCount]{};
+        glm::mat4 model[modelCount]{};
         glm::vec4 lightPos{0.0f, -10.0f, 10.0f, 0.0f};
         glm::vec4 lightColorIntensity{1.0f, 1.0f, 1.0f, 1.0f};
         // View-space direction (xyz), cosine of the outer half angle (w).
