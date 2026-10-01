@@ -10,13 +10,14 @@ class VulkanContext;
 class Window;
 class Assets;
 class Scene;
+class ShadowMap;
 
 // Owns rendering resources; its referenced components must outlive it.
 class Renderer {
 public:
     static constexpr std::uint32_t maxFramesInFlight = 2;
 
-    Renderer(VulkanContext& context, const Window& window, const Assets& assets);
+    Renderer(VulkanContext& context, const Window& window, const Assets& assets, ShadowMap& shadowMap);
     ~Renderer();
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
@@ -42,6 +43,7 @@ private:
     void createDepthResources();
     void createFrameResources();
     void createDescriptors();
+    void createShadowMapDescriptors();
     void createPipeline();
     void advanceFrame();
     void destroySwapchainResources();
@@ -59,6 +61,7 @@ private:
     void submitAndPresent();
 
     VulkanContext& context_;
+    ShadowMap& shadowMap_;
     const Window& window_;
     const Assets& assets_;
 
@@ -85,4 +88,7 @@ private:
     VkDescriptorSet textureSet_{VK_NULL_HANDLE};
     VkPipelineLayout pipelineLayout_{VK_NULL_HANDLE};
     VkPipeline pipeline_{VK_NULL_HANDLE};
+
+    VkDescriptorSetLayout shadowSetLayout_{VK_NULL_HANDLE};
+    VkDescriptorSet shadowSet_{VK_NULL_HANDLE};
 };

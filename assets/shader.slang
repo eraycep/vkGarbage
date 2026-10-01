@@ -10,7 +10,8 @@ struct VSInput {
 	float2 UV;
 };
 
-Sampler2D textures[];
+[[vk::binding(0, 0)]] Sampler2D textures[];
+[[vk::binding(0, 1)]] Sampler2D shadowMap;
 
 struct ShaderData {
     float4x4 projection;
@@ -53,6 +54,22 @@ VSOutput main(VSInput input, uniform ShaderData *shaderData, uint instanceIndex 
     return output;
 }
 
+// The shadow pass uses a positive-height viewport and zero-to-one depth.
+float shadowVisibility(float4 lightClipPosition, float normalDotLight) {
+    if (lightClipPosition.w <= 0.0) {
+        return 0.0;
+    }
+    float3 ndc = lightClipPosition.xyz / lightClipPosition.w;
+    if (any(ndc.xy < -1.0) || any(ndc.xy > 1.0) || ndc.z < 0.0 || ndc.z > 1.0) {
+        return 0.0;
+    }
+    float2 uv = ndc.xy * 0.5 + 0.5;
+    // Tune for the light's depth range; larger bias can detach shadows.
+    float bias = max(0.0005 * (1.0 - normalDotLight), 0.00005);
+    float storedDepth = shadowMap.SampleLevel(uv, 0.0).r;
+    return ndc.z - bias <= storedDepth ? 1.0 : 0.0;
+}
+
 [shader("fragment")]
 float4 main(VSOutput input, uniform ShaderData *shaderData) {
     // Phong lighting
@@ -71,5 +88,6 @@ float4 main(VSOutput input, uniform ShaderData *shaderData) {
     float3 color = textures[NonUniformResourceIndex(input.InstanceIndex)].Sample(input.UV).rgb * input.Factor;
     float3 ambient = 0.025 * color;
     float3 direct = (diffuse * color + specular) * lightColor * cone;
-    return float4(ambient + direct, 1.0);
+    float visibility = shadowVisibility(input.LightClipPosition, diffuse);
+    return float4(ambient + visibility * direct, 1.0);
 }

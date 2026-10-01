@@ -9,6 +9,7 @@ class VulkanContext;
 class Assets;
 class Scene;
 class Renderer;
+class ShadowMap;
 
 // Owns the components and coordinates initialization, input, rendering, and shutdown.
 class Application {
@@ -41,4 +42,5 @@ private:
     std::unique_ptr<Assets> assets_;
     std::unique_ptr<Scene> scene_;
     std::unique_ptr<Renderer> renderer_;
+    std::unique_ptr<ShadowMap> shadowMap_;
 };

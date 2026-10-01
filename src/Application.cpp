@@ -5,6 +5,7 @@
 #include "VulkanContext.hpp"
 #include "Window.hpp"
 #include "Light.hpp"
+#include "ShadowMap.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -27,10 +28,11 @@ void Application::initialize()
     }
     window_ = std::make_unique<Window>();
     context_ = std::make_unique<VulkanContext>(*window_, deviceIndex_);
+    shadowMap_ = std::make_unique<ShadowMap>(*context_);
     assets_ = std::make_unique<Assets>(*context_);
     assets_->load();
     scene_ = std::make_unique<Scene>();
-    renderer_ = std::make_unique<Renderer>(*context_, *window_, *assets_);
+    renderer_ = std::make_unique<Renderer>(*context_, *window_, *assets_, *shadowMap_);
     lastFrameTime_ = SDL_GetTicksNS();
     running_ = true;
 }
@@ -135,6 +137,7 @@ void Application::shutdown()
         context_->waitIdle();
     }
     renderer_.reset();
+    shadowMap_.reset();
     scene_.reset();
     assets_.reset();
     context_.reset();

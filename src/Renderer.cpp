@@ -4,10 +4,11 @@
 #include "Common.hpp"
 #include "Scene.hpp"
 #include "Assets.hpp"
+#include "ShadowMap.hpp"
 #include <algorithm>
 #include <cstring>
 
-Renderer::Renderer(VulkanContext& context, const Window& window, const Assets& assets) : context_(context), window_(window), assets_(assets)
+Renderer::Renderer(VulkanContext& context, const Window& window, const Assets& assets, ShadowMap& shadowMap) : context_(context), window_(window), assets_(assets), shadowMap_(shadowMap)
 {
     const bool ready = createSwapchain();
     if (ready) {
@@ -15,6 +16,7 @@ Renderer::Renderer(VulkanContext& context, const Window& window, const Assets& a
     }
     createFrameResources();
     createDescriptors();
+    createShadowMapDescriptors();
     if (ready) {
         createPipeline();
     } else {
@@ -220,12 +222,12 @@ void Renderer::createDescriptors()
     VkDescriptorSetLayoutBinding descLayoutBindingTex{ .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = static_cast<uint32_t>(assets_.textures().size()), .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT };
     VkDescriptorSetLayoutCreateInfo descLayoutTexCI{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .pNext = &descBindingFlags, .bindingCount = 1, .pBindings = &descLayoutBindingTex };
     chk(vkCreateDescriptorSetLayout(context_.device(), &descLayoutTexCI, nullptr, &textureSetLayout_));
-    VkDescriptorPoolSize poolSize{ .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = static_cast<uint32_t>(assets_.textures().size()) };
-	VkDescriptorPoolCreateInfo descPoolCI{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, .maxSets = 1, .poolSizeCount = 1, .pPoolSizes = &poolSize };
+    VkDescriptorPoolSize poolSize{ .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = static_cast<uint32_t>(assets_.textures().size() + 1) };
+	VkDescriptorPoolCreateInfo descPoolCI{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, .maxSets = 2, .poolSizeCount = 1, .pPoolSizes = &poolSize };
 	chk(vkCreateDescriptorPool(context_.device(), &descPoolCI, nullptr, &descriptorPool_));
 
 	uint32_t variableDescCount{ static_cast<uint32_t>(assets_.textures().size()) };
-	VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescCountAI{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT, .descriptorSetCount = 1, .pDescriptorCounts = &variableDescCount};
+	VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescCountAI{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO, .descriptorSetCount = 1, .pDescriptorCounts = &variableDescCount};
 	VkDescriptorSetAllocateInfo texDescSetAlloc{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .pNext = &variableDescCountAI, .descriptorPool = descriptorPool_, .descriptorSetCount = 1, .pSetLayouts = &textureSetLayout_ };
 	chk(vkAllocateDescriptorSets(context_.device(), &texDescSetAlloc, &textureSet_));
 
@@ -242,10 +244,25 @@ void Renderer::createDescriptors()
 	vkUpdateDescriptorSets(context_.device(), 1, &writeDescSet, 0, nullptr);
 }
 
+void Renderer::createShadowMapDescriptors()
+{
+    VkDescriptorSetLayoutBinding descLayoutBindingShadow{ .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT };
+    VkDescriptorSetLayoutCreateInfo descLayoutShadowCI{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 1, .pBindings = &descLayoutBindingShadow };
+    chk(vkCreateDescriptorSetLayout(context_.device(), &descLayoutShadowCI, nullptr, &shadowSetLayout_));
+
+    VkDescriptorSetAllocateInfo shadowDescSetAlloc{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .descriptorPool = descriptorPool_, .descriptorSetCount = 1, .pSetLayouts = &shadowSetLayout_ };
+    chk(vkAllocateDescriptorSets(context_.device(), &shadowDescSetAlloc, &shadowSet_));
+
+    VkDescriptorImageInfo shadowDecriptorImage = shadowMap_.descriptorInfo();
+    VkWriteDescriptorSet writeDescSet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = shadowSet_, .dstBinding = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &shadowDecriptorImage };
+    vkUpdateDescriptorSets(context_.device(), 1, &writeDescSet, 0, nullptr);
+}
+
 void Renderer::createPipeline()
 {
+    std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts{textureSetLayout_, shadowSetLayout_};
     VkPushConstantRange pushConstantRange{ .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, .size = sizeof(VkDeviceAddress) };
-    VkPipelineLayoutCreateInfo pipelineLayoutCI{ .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1, .pSetLayouts = &textureSetLayout_, .pushConstantRangeCount = 1, .pPushConstantRanges = &pushConstantRange };
+    VkPipelineLayoutCreateInfo pipelineLayoutCI{ .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size()), .pSetLayouts = descriptorSetLayouts.data(), .pushConstantRangeCount = 1, .pPushConstantRanges = &pushConstantRange };
     chk(vkCreatePipelineLayout(context_.device(), &pipelineLayoutCI, nullptr, &pipelineLayout_));
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages{
         { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_VERTEX_BIT, .module = assets_.shaderModule(), .pName = "main" },
@@ -314,6 +331,10 @@ void Renderer::recordCommands()
     chk(vkResetCommandBuffer(cb, 0));
     VkCommandBufferBeginInfo cbBI{ .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT };
     chk(vkBeginCommandBuffer(cb, &cbBI));
+    
+    // render shadow map
+    shadowMap_.Render(cb, frames_[frameIndex_].shaderDataAddress, assets_.mesh(), Scene::objectCount);
+
     std::array<VkImageMemoryBarrier2, 2> outputBarriers{
         VkImageMemoryBarrier2{
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -373,9 +394,10 @@ void Renderer::recordCommands()
     VkViewport vp{ .width = static_cast<float>(extent_.width), .height = static_cast<float>(extent_.height), .minDepth = 0.0f, .maxDepth = 1.0f };
     vkCmdSetViewport(cb, 0, 1, &vp);
     VkRect2D scissor{ .extent{ .width = static_cast<uint32_t>(extent_.width), .height = static_cast<uint32_t>(extent_.height) } };
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
     vkCmdSetScissor(cb, 0, 1, &scissor);
-    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1, &textureSet_, 0, nullptr);
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
+    std::array<VkDescriptorSet, 2> descriptorSets{textureSet_, shadowSet_};
+    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
     VkDeviceSize vOffset{ 0 };
     vkCmdBindVertexBuffers(cb, 0, 1, &assets_.mesh().buffer, &vOffset);
     vkCmdBindIndexBuffer(cb, assets_.mesh().buffer, assets_.mesh().indexOffset, assets_.mesh().indexType);
@@ -508,6 +530,7 @@ void Renderer::cleanup()
     vkDestroyPipelineLayout(context_.device(), pipelineLayout_, nullptr);
     vkDestroyDescriptorPool(context_.device(), descriptorPool_, nullptr);
     vkDestroyDescriptorSetLayout(context_.device(), textureSetLayout_, nullptr);
+    vkDestroyDescriptorSetLayout(context_.device(), shadowSetLayout_, nullptr);
     for (const auto& frame : frames_) {
         vkDestroyFence(context_.device(), frame.fence, nullptr);
         vkDestroySemaphore(context_.device(), frame.imageAcquired, nullptr);
