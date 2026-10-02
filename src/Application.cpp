@@ -108,7 +108,7 @@ void Application::handleEvent(const SDL_Event& event)
         }
         break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        if (renderer_->ui().wantsMouse()) {
+        if (event.button.button != SDL_BUTTON_LEFT || renderer_->ui().wantsMouse()) {
             break;
         } else {
             int windowWidth, windowHeight;
@@ -146,6 +146,7 @@ void Application::handleEvent(const SDL_Event& event)
                     scene_->pickObject(rayOrigin, rayDirection, *assets_)) {
                 scene_->selectObject(*hit);
             }
+            break;
         }
     case SDL_EVENT_KEY_DOWN:
         if (renderer_->ui().wantsKeyboard()) break;
