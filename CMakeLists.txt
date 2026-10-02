@@ -96,7 +96,8 @@ target_sources(${NAME} PRIVATE
     src/Scene.cpp src/Scene.hpp src/SceneObject.hpp
     src/VulkanContext.cpp src/VulkanContext.hpp
     src/Assets.cpp src/Assets.hpp src/ShadowMap.cpp
-    src/ShadowMap.hpp
+    src/ShadowMap.hpp src/BoundingBox.hpp 
+    src/BoundingBox.cpp
 )
 target_compile_definitions(${NAME} PRIVATE VK_NO_PROTOTYPES)
 target_include_directories(${NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")

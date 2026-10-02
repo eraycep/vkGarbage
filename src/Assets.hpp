@@ -5,6 +5,8 @@
 #include <glm/glm.hpp>
 #include "Shader.hpp"
 #include "SceneObject.hpp"
+#include "BoundingBox.hpp"
+
 #include <memory>
 #include <array>
 #include <cstdint>
@@ -26,6 +28,7 @@ public:
     struct DrawRange {
         std::uint32_t firstIndex{0};
         std::uint32_t indexCount{0};
+        BoundingBox boundingBox{};
     };
 
     struct Mesh {

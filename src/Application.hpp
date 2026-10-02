@@ -14,6 +14,8 @@ class ShadowMap;
 // Owns the components and coordinates initialization, input, rendering, and shutdown.
 class Application {
 public:
+    static constexpr int windowWidth = 1280;
+    static constexpr int windowHeight = 720;
     static constexpr float movementSpeed_ = 10.0f;
 
     explicit Application(std::uint32_t deviceIndex = 0);

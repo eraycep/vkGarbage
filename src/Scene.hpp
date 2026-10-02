@@ -8,10 +8,13 @@
 
 #include "Light.hpp"
 #include "SceneObject.hpp"
-#include <span>
 
+#include <span>
 #include <array>
 #include <cstdint>
+#include <optional>
+
+class Assets;
 
 // CPU scene state, independent of SDL and Vulkan resource management.
 class Scene {
@@ -49,6 +52,8 @@ public:
     void moveCamera(glm::vec3 delta);
     void selectNext();
     void selectPrevious();
+    void selectObject(uint32_t index);
+    std::optional<uint32_t> pickObject(const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const Assets& assets) const;
     std::uint32_t selectedObject() const;
     ShaderData shaderData(float aspectRatio) const;
     glm::vec3 cameraPosition() const;

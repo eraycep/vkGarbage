@@ -45,6 +45,7 @@ namespace {
 struct MeshData {
     std::vector<Assets::Vertex> vertices;
     std::vector<std::uint32_t> indices;
+    struct BoundingBox boundingBox;
 };
 
 MeshData loadMeshData(const std::filesystem::path& path)
@@ -121,6 +122,12 @@ MeshData loadMeshData(const std::filesystem::path& path)
                 .normal = {attrib.normals[normal], -attrib.normals[normal + 1], attrib.normals[normal + 2]},
                 .uv = {attrib.texcoords[uv], 1.0f - attrib.texcoords[uv + 1]},
             };
+            if (data.vertices.empty()) {
+                data.boundingBox = {vertex.position, vertex.position};
+            } else {
+                data.boundingBox.min = glm::min(data.boundingBox.min, vertex.position);
+                data.boundingBox.max = glm::max(data.boundingBox.max, vertex.position);
+            }
             for (float value : {vertex.position.x, vertex.position.y, vertex.position.z,
                                 vertex.normal.x, vertex.normal.y, vertex.normal.z, vertex.uv.x, vertex.uv.y}) {
                 if (!std::isfinite(value)) {
@@ -170,8 +177,8 @@ void Assets::loadMesh(const std::filesystem::path& path)
                 data.indices.data(), static_cast<std::size_t>(indexBytes));
     chk(vmaFlushAllocation(context_.allocator(), mesh_.allocation, 0, VK_WHOLE_SIZE));
     mesh_.indexOffset = vertexBytes;
-    mesh_.ranges[static_cast<std::size_t>(MeshId::Suzanne)] = {0, meshIndexCount};
-    mesh_.ranges[static_cast<std::size_t>(MeshId::Plane)] = {meshIndexCount, 6};
+    mesh_.ranges[static_cast<std::size_t>(MeshId::Suzanne)] = {0, meshIndexCount, data.boundingBox};
+    mesh_.ranges[static_cast<std::size_t>(MeshId::Plane)] = {meshIndexCount, 6, {{-1, 0, -1}, {1, 0, 1}}};
     mesh_.indexType = VK_INDEX_TYPE_UINT32;
 }
 

@@ -107,6 +107,46 @@ void Application::handleEvent(const SDL_Event& event)
             scene_->rotateSelected({-event.motion.yrel * 0.005f, event.motion.xrel * 0.005f});
         }
         break;
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        if (renderer_->ui().wantsMouse()) {
+            break;
+        } else {
+            int windowWidth, windowHeight;
+            SDL_GetWindowSize(window_->nativeHandle(), &windowWidth, &windowHeight);
+            float mouseX = event.button.x;
+            float mouseY = event.button.y;
+
+            const VkExtent2D extent = window_->framebufferExtent();
+            if (windowWidth <= 0 || windowHeight <= 0 ||
+                extent.width == 0 || extent.height == 0) {
+                break;
+            }
+
+            const float aspectRatio =
+                static_cast<float>(extent.width) / extent.height;
+
+            const auto data = scene_->shaderData(aspectRatio);
+            const glm::mat4 inverseVP =
+                glm::inverse(data.projection * data.view);
+
+            const float x = 2.0f * event.button.x / windowWidth - 1.0f;
+            const float y = 2.0f * event.button.y / windowHeight - 1.0f;
+
+            glm::vec4 nearPoint = inverseVP * glm::vec4(x, y, 0.0f, 1.0f);
+            glm::vec4 farPoint  = inverseVP * glm::vec4(x, y, 1.0f, 1.0f);
+
+            nearPoint /= nearPoint.w;
+            farPoint /= farPoint.w;
+
+            const glm::vec3 rayOrigin = glm::vec3(nearPoint);
+            const glm::vec3 rayDirection =
+                glm::normalize(glm::vec3(farPoint - nearPoint));
+
+            if (const auto hit =
+                    scene_->pickObject(rayOrigin, rayDirection, *assets_)) {
+                scene_->selectObject(*hit);
+            }
+        }
     case SDL_EVENT_KEY_DOWN:
         if (renderer_->ui().wantsKeyboard()) break;
         if (event.key.key == SDLK_RIGHT) {

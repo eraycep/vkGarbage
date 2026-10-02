@@ -1,5 +1,8 @@
 #include "Scene.hpp"
 #include "Light.hpp"
+#include "Assets.hpp"
+#include <limits>
+#include <cmath>
 
 Scene::Scene()
 {
@@ -66,6 +69,37 @@ void Scene::selectPrevious()
         const auto next = (selectedObject_ + objectCount - step) % objectCount;
         if (objects_[next].selectable) { selectedObject_ = next; break; }
     }
+}
+
+std::optional<uint32_t> Scene::pickObject(const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const Assets& assets) const
+{
+    std::optional<uint32_t> closest;
+    float closestDistance = std::numeric_limits<float>::infinity();
+    if (glm::dot(rayDirection, rayDirection) == 0.0f) return std::nullopt;
+    for (uint32_t i = 0; i < objects_.size(); ++i) {
+        const auto& object = objects_[i];
+        if (!object.selectable || object.scale.x == 0.0f ||
+            object.scale.y == 0.0f || object.scale.z == 0.0f) continue;
+        const glm::mat4 model = glm::translate(glm::mat4(1.0f), object.position) *
+            glm::mat4_cast(glm::quat(object.rotation)) *
+            glm::scale(glm::mat4(1.0f), object.scale);
+        const glm::mat4 inverseModel = glm::inverse(model);
+        const glm::vec3 localOrigin(inverseModel * glm::vec4(rayOrigin, 1.0f));
+        // Do not normalize: preserve the world ray parameter across different scales.
+        const glm::vec3 localDirection(inverseModel * glm::vec4(rayDirection, 0.0f));
+        const auto& bounds = assets.mesh().ranges.at(static_cast<std::size_t>(object.mesh)).boundingBox;
+        const auto hit = bounds.intersectRay(localOrigin, localDirection);
+        if (hit && *hit < closestDistance) {
+            closestDistance = *hit;
+            closest = i;
+        }
+    }
+    return closest;
+}
+
+void Scene::selectObject(uint32_t index)
+{
+    if (index < objects_.size() && objects_[index].selectable) selectedObject_ = index;
 }
 
 std::uint32_t Scene::selectedObject() const
