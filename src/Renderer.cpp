@@ -5,6 +5,7 @@
 #include "Scene.hpp"
 #include "Assets.hpp"
 #include "ShadowMap.hpp"
+#include "EditorUi.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -17,6 +18,7 @@ Renderer::Renderer(VulkanContext& context, const Window& window, const Assets& a
     createFrameResources();
     createDescriptors();
     createShadowMapDescriptors();
+    ui_ = std::make_unique<EditorUi>(context_, window_);
     if (ready) {
         createPipeline();
     } else {
@@ -27,10 +29,11 @@ Renderer::Renderer(VulkanContext& context, const Window& window, const Assets& a
 Renderer::~Renderer()
 {
     context_.waitIdle();
+    ui_.reset();
     cleanup();
 }
 
-bool Renderer::drawFrame(const Scene& scene)
+bool Renderer::drawFrame(Scene& scene)
 {
     if (resizeRequested_ && !recreateSwapchain()) {
         return false;
@@ -40,6 +43,8 @@ bool Renderer::drawFrame(const Scene& scene)
         return false;
     }
 
+    ui_->prepare(colorFormat_, depthFormat_, static_cast<std::uint32_t>(swapchainImages_.size()));
+    ui_->build(scene);
     updateShaderData(scene);
     recordCommands(scene);
     submitAndPresent();
@@ -406,6 +411,7 @@ void Renderer::recordCommands(const Scene& scene)
         const auto& range = assets_.mesh().ranges[static_cast<std::size_t>(scene.objects()[i].mesh)];
         vkCmdDrawIndexed(cb, range.indexCount, 1, range.firstIndex, 0, i);
     }
+    ui_->record(cb);
     vkCmdEndRendering(cb);
     VkImageMemoryBarrier2 barrierPresent{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,

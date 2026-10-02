@@ -5,12 +5,14 @@
 #include <array>
 #include <cstdint>
 #include <vector>
+#include <memory>
 
 class VulkanContext;
 class Window;
 class Assets;
 class Scene;
 class ShadowMap;
+class EditorUi;
 
 // Owns rendering resources; its referenced components must outlive it.
 class Renderer {
@@ -22,7 +24,8 @@ public:
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
 
-    bool drawFrame(const Scene& scene);
+    bool drawFrame(Scene& scene);
+    EditorUi& ui() { return *ui_; }
     void requestResize();
 
 private:
@@ -60,6 +63,7 @@ private:
     // Submit the recorded frame, handle presentation status, and advance the frame.
     void submitAndPresent();
 
+    std::unique_ptr<EditorUi> ui_;
     VulkanContext& context_;
     ShadowMap& shadowMap_;
     const Window& window_;

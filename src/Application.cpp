@@ -6,6 +6,7 @@
 #include "Window.hpp"
 #include "Light.hpp"
 #include "ShadowMap.hpp"
+#include "EditorUi.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -46,7 +47,7 @@ int Application::run()
         const float deltaSeconds = std::min(static_cast<float>(now - lastFrameTime_) / 1e9f, 0.1f);
         lastFrameTime_ = now;
         // Keep processing input even while minimized or waiting for a resize.
-        processEvents(deltaSeconds);
+        processEvents();
         if (!running_) {
             break;
         }
@@ -63,16 +64,18 @@ int Application::run()
     return EXIT_SUCCESS;
 }
 
-void Application::processEvents(float deltaSeconds)
+void Application::processEvents()
 {
     SDL_Event event;
     while (running_ && window_->pollEvent(event)) {
-        handleEvent(event, deltaSeconds);
+        renderer_->ui().processEvent(event);
+        handleEvent(event);
     }
 }
 
 void Application::updateMovement(float deltaSeconds)
 {
+    if (renderer_->ui().wantsKeyboard()) return;
     if (SDL_GetKeyboardFocus() != window_->nativeHandle() ||
         (SDL_GetWindowFlags(window_->nativeHandle()) & SDL_WINDOW_MINIMIZED) != 0) {
         return;
@@ -92,28 +95,23 @@ void Application::updateMovement(float deltaSeconds)
     scene_->moveCamera(direction * movementSpeed_ * deltaSeconds);
 }
 
-void Application::handleEvent(const SDL_Event& event, float deltaSeconds)
+void Application::handleEvent(const SDL_Event& event)
 {
-    float xrel;
-    float yrel;
-
     switch (event.type) {
     case SDL_EVENT_QUIT:
         running_ = false;
         break;
     case SDL_EVENT_MOUSE_MOTION:
-        if ((event.motion.state & SDL_BUTTON_LMASK) == 0) {
-            xrel = event.motion.xrel * cameraSensitivity_;
-            yrel = event.motion.yrel * cameraSensitivity_;
-            scene_->rotateCamera(xrel, yrel);
-        } else {
-            scene_->rotateSelected({-event.motion.yrel * deltaSeconds, event.motion.xrel * deltaSeconds});
+        // Future picking/dragging belongs here. UI mouse input stays with ImGui.
+        if (!renderer_->ui().wantsMouse() && (event.motion.state & SDL_BUTTON_LMASK) != 0) {
+            scene_->rotateSelected({-event.motion.yrel * 0.005f, event.motion.xrel * 0.005f});
         }
         break;
     case SDL_EVENT_KEY_DOWN:
-        if (event.key.key == SDLK_PLUS || event.key.key == SDLK_KP_PLUS) {
+        if (renderer_->ui().wantsKeyboard()) break;
+        if (event.key.key == SDLK_RIGHT) {
             scene_->selectNext();
-        } else if (event.key.key == SDLK_MINUS || event.key.key == SDLK_KP_MINUS) {
+        } else if (event.key.key == SDLK_LEFT) {
             scene_->selectPrevious();
         }
 

@@ -38,6 +38,9 @@ public:
     };
 
     Scene();
+    SceneObject& object(std::size_t index) { return objects_.at(index); }
+    SpotLight& light() { return lights_[0]; }
+    std::vector<SpotLight> lights() { return std::vector<SpotLight>(lights_.begin(), lights_.end()); }
     std::span<const SceneObject> objects() const { return objects_; }
     void rotateSelected(const glm::vec2& deltaRadians);
     void rotateCamera(float x, float y);
