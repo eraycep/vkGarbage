@@ -9,7 +9,6 @@ Window::Window(const char* title, int width, int height)
     vulkanLibraryLoaded_ = true;
 
     window_ = SDL_CreateWindow(title, width, height, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
-    SDL_SetWindowRelativeMouseMode(window_, true);
     chk(window_ != nullptr);
 }
 

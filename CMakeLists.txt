@@ -61,6 +61,17 @@ if (NOT TARGET SDL3::SDL3)
         GIT_SHALLOW ON)
     FetchContent_MakeAvailable(SDL3)
 endif()
+# Dear ImGui v1.91.9b, vendored with its MIT license for reproducible offline builds.
+add_library(imgui STATIC
+    external/imgui/imgui.cpp external/imgui/imgui_draw.cpp
+    external/imgui/imgui_tables.cpp external/imgui/imgui_widgets.cpp
+    external/imgui/imgui_demo.cpp
+    external/imgui/backends/imgui_impl_sdl3.cpp
+    external/imgui/backends/imgui_impl_vulkan.cpp)
+target_include_directories(imgui PUBLIC external/imgui)
+target_compile_definitions(imgui PRIVATE VK_NO_PROTOTYPES)
+target_link_libraries(imgui PUBLIC SDL3::SDL3)
+
 find_library(Slang_LIBRARY NAMES slang slang-compiler HINTS "$ENV{VULKAN_SDK}/lib" REQUIRED)
 
 if(WIN32)
@@ -77,6 +88,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/")
 add_executable(${NAME} main.cpp assets/shader.slang)
 target_sources(${NAME} PRIVATE
     src/Common.hpp
+    src/EditorUi.cpp src/EditorUi.hpp
     src/Shader.cpp src/Shader.hpp
     src/Application.cpp src/Application.hpp
     src/Window.cpp src/Window.hpp
@@ -93,7 +105,7 @@ if (WIN32)
 endif()
 set_target_properties(${NAME} PROPERTIES DEBUGGER_WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(${NAME} PRIVATE cxx_std_20)
-target_link_libraries(${NAME} PRIVATE SDL3::SDL3 ktx ${Slang_LIBRARY})
+target_link_libraries(${NAME} PRIVATE imgui SDL3::SDL3 ktx ${Slang_LIBRARY})
 if (NOT WIN32)
     target_link_libraries(${NAME} PRIVATE glm::glm-header-only)
 endif()
