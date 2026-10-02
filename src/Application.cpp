@@ -113,8 +113,6 @@ void Application::handleEvent(const SDL_Event& event)
         } else {
             int windowWidth, windowHeight;
             SDL_GetWindowSize(window_->nativeHandle(), &windowWidth, &windowHeight);
-            float mouseX = event.button.x;
-            float mouseY = event.button.y;
 
             const VkExtent2D extent = window_->framebufferExtent();
             if (windowWidth <= 0 || windowHeight <= 0 ||
