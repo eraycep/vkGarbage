@@ -29,6 +29,9 @@ public:
         glm::mat4 normalMatrix[objectCount]{};
         // RGB tint, W texture index (-1 for untextured objects).
         glm::vec4 objectAppearance[objectCount]{};
+        // RGB: specular color multiplied by strength; W: shininess.
+        glm::vec4 objectSpecular[objectCount]{};
+        
         glm::vec4 lightPos{0.0f, -10.0f, 10.0f, 0.0f};
         glm::vec4 lightColorIntensity{1.0f, 1.0f, 1.0f, 1.0f};
         // View-space direction (xyz), cosine of the outer half angle (w).

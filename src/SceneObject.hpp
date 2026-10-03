@@ -13,4 +13,7 @@ struct SceneObject {
     std::int32_t textureIndex{-1}; // -1 uses color without a texture.
     glm::vec3 color{1.0f};
     bool selectable{true};
+    glm::vec3 specularColor{1.0f};
+    float specularStrength{0.75f};
+    float shininess{16.0f};
 };

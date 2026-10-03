@@ -126,6 +126,7 @@ Scene::ShaderData Scene::shaderData(float aspectRatio) const
             glm::scale(glm::mat4(1.0f), object.scale);
         data.normalMatrix[i] = glm::transpose(glm::inverse(data.view * data.model[i]));
         data.objectAppearance[i] = glm::vec4(object.color, static_cast<float>(object.textureIndex));
+        data.objectSpecular[i] = glm::vec4(object.specularColor * object.specularStrength, object.shininess);
     }
     // Lighting uses view space; the editable light stays in world space.
     data.lightPos = data.view * glm::vec4(lights_[0].position, 1.0f);

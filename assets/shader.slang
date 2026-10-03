@@ -19,6 +19,7 @@ struct ShaderData {
     float4x4 model[4];
     float4x4 normalMatrix[4];
     float4 objectAppearance[4];
+    float4 objectSpecular[4];
     float4 lightPos;
     float4 lightColorIntensity;
     float4 lightDirectionOuterCos;
@@ -80,7 +81,10 @@ float4 main(VSOutput input, uniform ShaderData *shaderData) {
     float3 V = normalize(input.ViewVec);
     float3 R = reflect(-L, N);
     float diffuse = max(dot(N, L), 0.0);
-    float specular = diffuse > 0.0 ? pow(max(dot(R, V), 0.0), 16.0) * 0.75 : 0.0;
+    float4 material = shaderData->objectSpecular[input.InstanceIndex];
+    float3 specular = diffuse > 0.0
+        ? material.rgb * pow(max(dot(R, V), 0.0), material.w)
+        : float3(0.0);
     // -L points from the light toward this surface.
     float coneCos = dot(-L, normalize(shaderData->lightDirectionOuterCos.xyz));
     float cone = smoothstep(shaderData->lightDirectionOuterCos.w,
