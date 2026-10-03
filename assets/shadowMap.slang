@@ -1,22 +1,9 @@
+import common;
+
 struct VSInput {
     float3 Pos;
     float3 Normal;
 	float2 UV;
-};
-
-struct ShaderData {
-    float4x4 projection;
-    float4x4 view;
-    float4x4 model[4];
-    float4x4 normalMatrix[4];
-    float4 objectAppearance[4];
-    float4 objectSpecular[4];
-    float4 lightPos;
-    float4 lightColorIntensity;
-    float4 lightDirectionOuterCos;
-    float4x4 lightViewProjection;
-    float4 lightCone;
-    uint32_t selected;
 };
 
 [shader("vertex")]
