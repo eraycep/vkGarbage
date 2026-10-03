@@ -6,6 +6,7 @@
 #include "Assets.hpp"
 #include "ShadowMap.hpp"
 #include "EditorUi.hpp"
+#include "Shader.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -313,6 +314,17 @@ void Renderer::createPipeline()
 		.layout = pipelineLayout_
     };
     chk(vkCreateGraphicsPipelines(context_.device(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &pipeline_));
+
+    // Share attachment formats/layout, but draw a depth preview without mesh input or depth tests.
+    const Shader preview(context_.device(), "assets/shadowDepth.slang");
+    for (auto& stage : shaderStages) stage.module = preview.module();
+    vertexInputState.vertexBindingDescriptionCount = 0;
+    vertexInputState.pVertexBindingDescriptions = nullptr;
+    vertexInputState.vertexAttributeDescriptionCount = 0;
+    vertexInputState.pVertexAttributeDescriptions = nullptr;
+    depthStencilState.depthTestEnable = VK_FALSE;
+    depthStencilState.depthWriteEnable = VK_FALSE;
+    chk(vkCreateGraphicsPipelines(context_.device(), VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &shadowDepthPipeline_));
 }
 
 VkResult Renderer::acquireNextImage()
@@ -400,14 +412,25 @@ void Renderer::recordCommands(const Scene& scene)
     vkCmdSetViewport(cb, 0, 1, &vp);
     VkRect2D scissor{ .extent{ .width = static_cast<uint32_t>(extent_.width), .height = static_cast<uint32_t>(extent_.height) } };
     vkCmdSetScissor(cb, 0, 1, &scissor);
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
+    const bool depthPreview = scene.debugMode() == Scene::DebugMode::ShadowDepth;
+    if (depthPreview) {
+        // Preserve the square shadow map's aspect ratio.
+        const float side = static_cast<float>(std::min(extent_.width, extent_.height));
+        VkViewport previewViewport{(extent_.width - side) * 0.5f,
+            (extent_.height - side) * 0.5f, side, side, 0.0f, 1.0f};
+        vkCmdSetViewport(cb, 0, 1, &previewViewport);
+    }
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      depthPreview ? shadowDepthPipeline_ : pipeline_);
     std::array<VkDescriptorSet, 2> descriptorSets{textureSet_, shadowSet_};
     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
     VkDeviceSize vOffset{ 0 };
     vkCmdBindVertexBuffers(cb, 0, 1, &assets_.mesh().buffer, &vOffset);
     vkCmdBindIndexBuffer(cb, assets_.mesh().buffer, assets_.mesh().indexOffset, assets_.mesh().indexType);
     vkCmdPushConstants(cb, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VkDeviceAddress), &frames_[frameIndex_].shaderDataAddress);
-    for (std::uint32_t i = 0; i < scene.objects().size(); ++i) {
+    if (depthPreview) {
+        vkCmdDraw(cb, 3, 1, 0, 0);
+    } else for (std::uint32_t i = 0; i < scene.objects().size(); ++i) {
         const auto& range = assets_.mesh().ranges[static_cast<std::size_t>(scene.objects()[i].mesh)];
         vkCmdDrawIndexed(cb, range.indexCount, 1, range.firstIndex, 0, i);
     }
@@ -498,6 +521,8 @@ bool Renderer::recreateSwapchain()
     }
     createDepthResources();
     if (pipeline_ == VK_NULL_HANDLE || colorFormat_ != previousColorFormat || depthFormat_ != previousDepthFormat) {
+        vkDestroyPipeline(context_.device(), shadowDepthPipeline_, nullptr);
+        shadowDepthPipeline_ = VK_NULL_HANDLE;
         vkDestroyPipeline(context_.device(), pipeline_, nullptr);
         vkDestroyPipelineLayout(context_.device(), pipelineLayout_, nullptr);
         pipeline_ = VK_NULL_HANDLE;
@@ -535,6 +560,7 @@ void Renderer::destroySwapchainResources()
 
 void Renderer::cleanup()
 {
+    vkDestroyPipeline(context_.device(), shadowDepthPipeline_, nullptr);
     vkDestroyPipeline(context_.device(), pipeline_, nullptr);
     vkDestroyPipelineLayout(context_.device(), pipelineLayout_, nullptr);
     vkDestroyDescriptorPool(context_.device(), descriptorPool_, nullptr);

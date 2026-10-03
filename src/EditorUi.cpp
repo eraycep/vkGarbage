@@ -81,6 +81,15 @@ void EditorUi::build(Scene& scene)
         ImGui::Text("Selected object: %u", scene.selectedObject());
         ImGui::TextWrapped("WASD: camera movement. Left drag outside this panel: rotate selected object. Left/Right arrows: selection.");
         ImGui::Separator();
+        int debugMode = static_cast<int>(scene.debugMode());
+        const char* debugModes[] = {"Lit", "Normals (view space)", "Shadow visibility", "Shadow depth"};
+        if (ImGui::Combo("Debug view", &debugMode, debugModes, 4)) {
+            scene.setDebugMode(static_cast<Scene::DebugMode>(debugMode));
+        }
+        if (scene.debugMode() == Scene::DebugMode::ShadowDepth) {
+            ImGui::TextWrapped("Light depth: near is dark, far is white. Empty pixels are white.");
+        }
+        ImGui::Separator();
         // Add light widgets here using scene.light(), and transform widgets using
         // scene.object(scene.selectedObject()). Changes reach the GPU this frame.
         auto& light = scene.light();

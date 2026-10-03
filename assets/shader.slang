@@ -64,10 +64,19 @@ float shadowVisibility(float4 lightClipPosition, float normalDotLight) {
 float4 main(VSOutput input, uniform ShaderData *shaderData) {
     // Phong lighting
     float3 N = normalize(input.Normal);
+    if (shaderData->debugMode == 1) {
+        // View-space normals: map [-1, 1] into RGB [0, 1].
+        return float4(N * 0.5 + 0.5, 1.0);
+    }
     float3 L = input.LightVec / max(length(input.LightVec), 0.0001);
     float3 V = normalize(input.ViewVec);
     float3 R = reflect(-L, N);
     float diffuse = max(dot(N, L), 0.0);
+    float visibility = shadowVisibility(input.LightClipPosition, diffuse);
+    if (shaderData->debugMode == 2) {
+        // Outside the light frustum is also black, matching shadowVisibility().
+        return float4(visibility, visibility, visibility, 1.0);
+    }
     float4 material = shaderData->objectSpecular[input.InstanceIndex];
     float3 specular = diffuse > 0.0
         ? material.rgb * pow(max(dot(R, V), 0.0), material.w)
@@ -85,6 +94,5 @@ float4 main(VSOutput input, uniform ShaderData *shaderData) {
     }
     float3 ambient = 0.025 * color;
     float3 direct = (diffuse * color + specular) * lightColor * cone;
-    float visibility = shadowVisibility(input.LightClipPosition, diffuse);
     return float4(ambient + visibility * direct, 1.0);
 }

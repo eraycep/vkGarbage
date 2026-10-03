@@ -20,6 +20,8 @@ class Assets;
 class Scene {
 public:
     static constexpr std::uint32_t objectCount = 4;
+    // Values match the debug branches in assets/shader.slang.
+    enum class DebugMode : std::uint32_t { Lit = 0, Normals = 1, ShadowVisibility = 2, ShadowDepth = 3 };
 
     // Matches the existing shader data layout in assets/shader.slang.
     struct ShaderData {
@@ -41,9 +43,14 @@ public:
         // x: cosine of the inner half angle; yzw reserved.
         glm::vec4 lightCone{};
         std::uint32_t selected{1};
+        std::uint32_t debugMode{0};
+        float shadowNearPlane{0.1f};
+        float shadowFarPlane{32.0f};
     };
 
     Scene();
+    DebugMode debugMode() const { return debugMode_; }
+    void setDebugMode(DebugMode mode) { debugMode_ = mode; }
     SceneObject& object(std::size_t index) { return objects_.at(index); }
     SpotLight& light() { return lights_[0]; }
     std::vector<SpotLight> lights() { return std::vector<SpotLight>(lights_.begin(), lights_.end()); }
@@ -69,6 +76,7 @@ private:
     std::array<SceneObject, objectCount> objects_{};
     std::array<SpotLight, 1> lights_;
     std::uint32_t selectedObject_{1};
+    DebugMode debugMode_{DebugMode::Lit};
     float fieldOfViewDegrees_{45.0f};
     float nearPlane_{0.1f};
     float farPlane_{32.0f};

@@ -149,6 +149,9 @@ Scene::ShaderData Scene::shaderData(float aspectRatio) const
         0.0f, 0.0f, 0.0f);
     
     data.lightColorIntensity = glm::vec4(lights_[0].color, lights_[0].intensity);
+    data.shadowNearPlane = light.shadowNearPlane;
+    data.shadowFarPlane = light.shadowFarPlane;
     data.selected = selectedObject_;
+    data.debugMode = static_cast<std::uint32_t>(debugMode_);
     return data;
 }

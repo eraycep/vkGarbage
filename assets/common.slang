@@ -13,4 +13,7 @@ public struct ShaderData {
     public float4x4 lightViewProjection;
     public float4 lightCone;
     public uint32_t selected;
+    public uint32_t debugMode;
+    public float shadowNearPlane;
+    public float shadowFarPlane;
 };

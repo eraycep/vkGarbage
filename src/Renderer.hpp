@@ -92,6 +92,7 @@ private:
     VkDescriptorSet textureSet_{VK_NULL_HANDLE};
     VkPipelineLayout pipelineLayout_{VK_NULL_HANDLE};
     VkPipeline pipeline_{VK_NULL_HANDLE};
+    VkPipeline shadowDepthPipeline_{VK_NULL_HANDLE};
 
     VkDescriptorSetLayout shadowSetLayout_{VK_NULL_HANDLE};
     VkDescriptorSet shadowSet_{VK_NULL_HANDLE};
