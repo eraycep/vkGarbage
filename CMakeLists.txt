@@ -87,7 +87,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/")
 
 add_executable(${NAME} main.cpp assets/shader.slang)
 target_sources(${NAME} PRIVATE
-    src/Common.hpp
+    src/Common.hpp src/GPUData.hpp
     src/EditorUi.cpp src/EditorUi.hpp
     src/Shader.cpp src/Shader.hpp
     src/Application.cpp src/Application.hpp

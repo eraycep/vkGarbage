@@ -23,23 +23,24 @@ struct VSOutput {
     float3 LightVec;
     float4 LightClipPosition;
     float3 ViewVec;
-    uint32_t InstanceIndex;
+    nointerpolation uint32_t InstanceIndex;
 };
 
 [shader("vertex")]
-VSOutput main(VSInput input, uniform ShaderData *shaderData, uint instanceIndex : SV_VulkanInstanceID) {
+VSOutput main(VSInput input, uniform FrameData *frameData, uint instanceIndex : SV_VulkanInstanceID) {
     VSOutput output;
-    float4x4 modelMat = shaderData->model[instanceIndex];
-    output.Normal = mul((float3x3)shaderData->normalMatrix[instanceIndex], input.Normal);
+    GPUObject object = frameData->objectBuffer[instanceIndex];
+    float4x4 modelMat = object.model;
+    output.Normal = mul((float3x3)object.normalMatrix, input.Normal);
     output.UV = input.UV;
-    output.Pos = mul(shaderData->projection, mul(shaderData->view, mul(modelMat, float4(input.Pos.xyz, 1.0))));
-    output.Factor = (shaderData->selected == instanceIndex ? 3.0f : 1.0f);
+    output.Pos = mul(frameData->projection, mul(frameData->view, mul(modelMat, float4(input.Pos.xyz, 1.0))));
+    output.Factor = (frameData->selected == instanceIndex ? 3.0f : 1.0f);
     output.InstanceIndex = instanceIndex;
     // Calculate view vectors required for lighting
-    float4 fragPos = mul(mul(shaderData->view, modelMat), float4(input.Pos.xyz, 1.0));
-    output.LightVec = shaderData->lightPos.xyz - fragPos.xyz;
-    float4 worldPosition = mul(shaderData->model[instanceIndex], float4(input.Pos, 1.0));
-    output.LightClipPosition = mul(shaderData->lightViewProjection, worldPosition);
+    float4 fragPos = mul(mul(frameData->view, modelMat), float4(input.Pos.xyz, 1.0));
+    output.LightVec = frameData->lightPos.xyz - fragPos.xyz;
+    float4 worldPosition = mul(object.model, float4(input.Pos, 1.0));
+    output.LightClipPosition = mul(frameData->lightViewProjection, worldPosition);
     output.ViewVec = -fragPos.xyz;
     return output;
 }
@@ -61,10 +62,10 @@ float shadowVisibility(float4 lightClipPosition, float normalDotLight) {
 }
 
 [shader("fragment")]
-float4 main(VSOutput input, uniform ShaderData *shaderData) {
+float4 main(VSOutput input, uniform FrameData *frameData) {
     // Phong lighting
     float3 N = normalize(input.Normal);
-    if (shaderData->debugMode == 1) {
+    if (frameData->debugMode == 1) {
         // View-space normals: map [-1, 1] into RGB [0, 1].
         return float4(N * 0.5 + 0.5, 1.0);
     }
@@ -73,22 +74,23 @@ float4 main(VSOutput input, uniform ShaderData *shaderData) {
     float3 R = reflect(-L, N);
     float diffuse = max(dot(N, L), 0.0);
     float visibility = shadowVisibility(input.LightClipPosition, diffuse);
-    if (shaderData->debugMode == 2) {
+    if (frameData->debugMode == 2) {
         // Outside the light frustum is also black, matching shadowVisibility().
         return float4(visibility, visibility, visibility, 1.0);
     }
-    float4 material = shaderData->objectSpecular[input.InstanceIndex];
+    GPUObject object = frameData->objectBuffer[input.InstanceIndex];
+    GPUMaterial material = frameData->materialBuffer[object.materialIndex];
+    float4 specularData = material.specularShininess;
     float3 specular = diffuse > 0.0
-        ? material.rgb * pow(max(dot(R, V), 0.0), material.w)
+        ? specularData.rgb * pow(max(dot(R, V), 0.0), specularData.w)
         : float3(0.0);
     // -L points from the light toward this surface.
-    float coneCos = dot(-L, normalize(shaderData->lightDirectionOuterCos.xyz));
-    float cone = smoothstep(shaderData->lightDirectionOuterCos.w,
-                            shaderData->lightCone.x, coneCos);
-    float3 lightColor = shaderData->lightColorIntensity.rgb * shaderData->lightColorIntensity.w;
-    float4 appearance = shaderData->objectAppearance[input.InstanceIndex];
-    float3 color = appearance.rgb * input.Factor;
-    int textureIndex = int(appearance.w);
+    float coneCos = dot(-L, normalize(frameData->lightDirectionOuterCos.xyz));
+    float cone = smoothstep(frameData->lightDirectionOuterCos.w,
+                            frameData->lightCone.x, coneCos);
+    float3 lightColor = frameData->lightColorIntensity.rgb * frameData->lightColorIntensity.w;
+    float3 color = object.color.rgb * material.baseColor.rgb * input.Factor;
+    int textureIndex = material.textureIndex;
     if (textureIndex >= 0) {
         color *= textures[NonUniformResourceIndex(textureIndex)].Sample(input.UV).rgb;
     }

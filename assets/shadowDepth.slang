@@ -18,10 +18,10 @@ PreviewVertex main(uint vertexIndex : SV_VertexID) {
 }
 
 [shader("fragment")]
-float4 main(PreviewVertex input, uniform ShaderData* shaderData) {
+float4 main(PreviewVertex input, uniform FrameData* frameData) {
     float depth = shadowMap.SampleLevel(input.uv, 0.0).r;
-    float nearPlane = shaderData->shadowNearPlane;
-    float farPlane = shaderData->shadowFarPlane;
+    float nearPlane = frameData->shadowNearPlane;
+    float farPlane = frameData->shadowFarPlane;
     float distance = nearPlane * farPlane /
         (farPlane - depth * (farPlane - nearPlane));
     float gray = saturate((distance - nearPlane) / (farPlane - nearPlane));

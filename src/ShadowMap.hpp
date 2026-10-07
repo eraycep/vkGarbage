@@ -20,7 +20,7 @@ public:
     ShadowMap(const ShadowMap&) = delete;
     ShadowMap& operator=(const ShadowMap&) = delete;
 
-    void Render(VkCommandBuffer& cb, VkDeviceAddress shaderDataAddress, const Assets::Mesh& mesh, std::span<const SceneObject> objects);
+    void Render(VkCommandBuffer& cb, VkDeviceAddress frameDataAddress, const Assets::Mesh& mesh, std::span<const SceneObject> objects);
 
     VkDescriptorImageInfo descriptorInfo() const;
 

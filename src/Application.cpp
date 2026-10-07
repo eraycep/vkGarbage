@@ -123,7 +123,7 @@ void Application::handleEvent(const SDL_Event& event)
             const float aspectRatio =
                 static_cast<float>(extent.width) / extent.height;
 
-            const auto data = scene_->shaderData(aspectRatio);
+            const auto data = scene_->frameData(aspectRatio);
             const glm::mat4 inverseVP =
                 glm::inverse(data.projection * data.view);
 

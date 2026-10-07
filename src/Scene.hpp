@@ -8,6 +8,7 @@
 
 #include "Light.hpp"
 #include "SceneObject.hpp"
+#include "GPUData.hpp"
 
 #include <span>
 #include <array>
@@ -22,31 +23,6 @@ public:
     static constexpr std::uint32_t objectCount = 4;
     // Values match the debug branches in assets/shader.slang.
     enum class DebugMode : std::uint32_t { Lit = 0, Normals = 1, ShadowVisibility = 2, ShadowDepth = 3 };
-
-    // Matches the existing shader data layout in assets/shader.slang.
-    struct ShaderData {
-        glm::mat4 projection{1.0f};
-        glm::mat4 view{1.0f};
-        glm::mat4 model[objectCount]{};
-        glm::mat4 normalMatrix[objectCount]{};
-        // RGB tint, W texture index (-1 for untextured objects).
-        glm::vec4 objectAppearance[objectCount]{};
-        // RGB: specular color multiplied by strength; W: shininess.
-        glm::vec4 objectSpecular[objectCount]{};
-        
-        glm::vec4 lightPos{0.0f, -10.0f, 10.0f, 0.0f};
-        glm::vec4 lightColorIntensity{1.0f, 1.0f, 1.0f, 1.0f};
-        // View-space direction (xyz), cosine of the outer half angle (w).
-        glm::vec4 lightDirectionOuterCos{};
-        // World space to light clip space; depth is in [0, 1].
-        glm::mat4 lightViewProjection{1.0f};
-        // x: cosine of the inner half angle; yzw reserved.
-        glm::vec4 lightCone{};
-        std::uint32_t selected{1};
-        std::uint32_t debugMode{0};
-        float shadowNearPlane{0.1f};
-        float shadowFarPlane{32.0f};
-    };
 
     Scene();
     DebugMode debugMode() const { return debugMode_; }
@@ -65,8 +41,11 @@ public:
     void selectObject(uint32_t index);
     std::optional<uint32_t> pickObject(const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const Assets& assets) const;
     std::uint32_t selectedObject() const;
-    ShaderData shaderData(float aspectRatio) const;
+    FrameData frameData(float aspectRatio) const;
     glm::vec3 cameraPosition() const;
+
+    std::vector<GPUObject> gpuObjects(const glm::mat4& view) const;
+    std::vector<GPUMaterial> gpuMaterials() const;
 
 private:
     glm::vec3 cameraPosition_{0.0f, 0.0f, 6.0f};

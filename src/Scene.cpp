@@ -112,22 +112,13 @@ glm::vec3 Scene::cameraPosition() const
     return cameraPosition_;
 }
 
-Scene::ShaderData Scene::shaderData(float aspectRatio) const
+FrameData Scene::frameData(float aspectRatio) const
 {
-    ShaderData data{};
+    FrameData data{};
 
     data.projection = glm::perspective(glm::radians(fieldOfViewDegrees_), aspectRatio, nearPlane_, farPlane_);
     data.view = glm::lookAt(cameraPosition_, cameraPosition_ + cameraFront_, cameraUp_);
-    // data.view = glm::translate(glm::mat4(1.0f), cameraPosition_);
-    for (std::uint32_t i = 0; i < objectCount; ++i) {
-        const auto& object = objects_[i];
-        data.model[i] = glm::translate(glm::mat4(1.0f), object.position) *
-            glm::mat4_cast(glm::quat(object.rotation)) *
-            glm::scale(glm::mat4(1.0f), object.scale);
-        data.normalMatrix[i] = glm::transpose(glm::inverse(data.view * data.model[i]));
-        data.objectAppearance[i] = glm::vec4(object.color, static_cast<float>(object.textureIndex));
-        data.objectSpecular[i] = glm::vec4(object.specularColor * object.specularStrength, object.shininess);
-    }
+
     // Lighting uses view space; the editable light stays in world space.
     data.lightPos = data.view * glm::vec4(lights_[0].position, 1.0f);
     const glm::vec3 lightDirection = glm::normalize(
@@ -145,6 +136,7 @@ Scene::ShaderData Scene::shaderData(float aspectRatio) const
         glm::radians(light.outerConeDegrees * 2.0f), 1.0f,
         light.shadowNearPlane, light.shadowFarPlane);
     data.lightViewProjection = lightProjection * lightView;
+    data.cameraPosition = glm::vec4(cameraPosition_, 1.0f);
     data.lightCone = glm::vec4(glm::cos(glm::radians(lights_[0].innerConeDegrees)),
         0.0f, 0.0f, 0.0f);
     
@@ -154,4 +146,45 @@ Scene::ShaderData Scene::shaderData(float aspectRatio) const
     data.selected = selectedObject_;
     data.debugMode = static_cast<std::uint32_t>(debugMode_);
     return data;
+}
+
+std::vector<GPUObject> Scene::gpuObjects(const glm::mat4& view) const
+{
+    std::vector<GPUObject> gpuObjects;
+    gpuObjects.reserve(objects_.size());
+    for (uint32_t i = 0; i < objects_.size(); i++) {
+        const auto& object = objects_[i];
+        GPUObject gpuObject;
+
+        gpuObject.model = glm::translate(glm::mat4(1.0f), object.position) *
+            glm::mat4_cast(glm::quat(object.rotation)) *
+            glm::scale(glm::mat4(1.0f), object.scale);
+        gpuObject.normalMatrix = glm::transpose(glm::inverse(view * gpuObject.model));
+        gpuObject.color = glm::vec4(object.color, 1.0f);
+        gpuObject.materialIndex = i;
+        gpuObjects.push_back(gpuObject);
+    }
+
+    return gpuObjects;
+}
+
+std::vector<GPUMaterial> Scene::gpuMaterials() const
+{
+    std::vector<GPUMaterial> gpuMaterials;
+    gpuMaterials.reserve(objects_.size());
+
+    for (uint32_t i = 0; i < objects_.size(); i++) {
+        const auto& object = objects_[i];
+        GPUMaterial gpuMaterial;
+
+        gpuMaterial.baseColor = glm::vec4(1.0f);
+        gpuMaterial.textureIndex = object.textureIndex;
+        gpuMaterial.specularShininess = glm::vec4(
+            object.specularColor * object.specularStrength,
+            object.shininess);
+
+        gpuMaterials.push_back(gpuMaterial);
+    }
+
+    return gpuMaterials;
 }

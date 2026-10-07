@@ -194,11 +194,26 @@ void Renderer::createDepthResources()
 void Renderer::createFrameResources()
 {
     for (auto i = 0; i < maxFramesInFlight; i++) {
-        VkBufferCreateInfo uBufferCI{ .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = sizeof(Scene::ShaderData), .usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT };
+        frames_[i].objectCapacity = 16;
+        frames_[i].materialCapacity = 16;
+
+        VkBufferCreateInfo uBufferCI{ .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = sizeof(FrameData), .usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT };
         VmaAllocationCreateInfo uBufferAllocCreateInfo{ .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |  VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO };
-        chk(vmaCreateBuffer(context_.allocator(), &uBufferCI, &uBufferAllocCreateInfo, &frames_[i].shaderDataBuffer, &frames_[i].shaderDataAllocation, &frames_[i].shaderDataAllocationInfo));
-        VkBufferDeviceAddressInfo uBufferBdaInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = frames_[i].shaderDataBuffer };
-        frames_[i].shaderDataAddress = vkGetBufferDeviceAddress(context_.device(), &uBufferBdaInfo);
+        chk(vmaCreateBuffer(context_.allocator(), &uBufferCI, &uBufferAllocCreateInfo, &frames_[i].frameDataBuffer, &frames_[i].frameDataAllocation, &frames_[i].frameDataAllocationInfo));
+        VkBufferDeviceAddressInfo uBufferBdaInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = frames_[i].frameDataBuffer };
+        frames_[i].frameDataAddress = vkGetBufferDeviceAddress(context_.device(), &uBufferBdaInfo);
+
+        VkBufferCreateInfo oBufferCI{ .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = sizeof(GPUObject) * frames_[i].objectCapacity, .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT };
+        VmaAllocationCreateInfo oBufferAllocCreateInfo{ .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |  VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO };
+        chk(vmaCreateBuffer(context_.allocator(), &oBufferCI, &oBufferAllocCreateInfo, &frames_[i].objectBuffer, &frames_[i].objectDataAllocation, &frames_[i].objectDataAllocationInfo));
+        VkBufferDeviceAddressInfo oBufferBdaInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = frames_[i].objectBuffer };
+        frames_[i].objectDataAddress = vkGetBufferDeviceAddress(context_.device(), &oBufferBdaInfo);
+
+        VkBufferCreateInfo mBufferCI{ .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = sizeof(GPUMaterial) * frames_[i].materialCapacity, .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT };
+        VmaAllocationCreateInfo mBufferAllocCreateInfo{ .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |  VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO };
+        chk(vmaCreateBuffer(context_.allocator(), &mBufferCI, &mBufferAllocCreateInfo, &frames_[i].materialBuffer, &frames_[i].materialDataAllocation, &frames_[i].materialDataAllocationInfo));
+        VkBufferDeviceAddressInfo mBufferBdaInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = frames_[i].materialBuffer };
+        frames_[i].materialDataAddress = vkGetBufferDeviceAddress(context_.device(), &mBufferBdaInfo);
     }
 
     VkSemaphoreCreateInfo semCI{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
@@ -350,7 +365,7 @@ void Renderer::recordCommands(const Scene& scene)
     chk(vkBeginCommandBuffer(cb, &cbBI));
     
     // render shadow map
-    shadowMap_.Render(cb, frames_[frameIndex_].shaderDataAddress, assets_.mesh(), scene.objects());
+    shadowMap_.Render(cb, frames_[frameIndex_].frameDataAddress, assets_.mesh(), scene.objects());
 
     std::array<VkImageMemoryBarrier2, 2> outputBarriers{
         VkImageMemoryBarrier2{
@@ -427,7 +442,7 @@ void Renderer::recordCommands(const Scene& scene)
     VkDeviceSize vOffset{ 0 };
     vkCmdBindVertexBuffers(cb, 0, 1, &assets_.mesh().buffer, &vOffset);
     vkCmdBindIndexBuffer(cb, assets_.mesh().buffer, assets_.mesh().indexOffset, assets_.mesh().indexType);
-    vkCmdPushConstants(cb, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VkDeviceAddress), &frames_[frameIndex_].shaderDataAddress);
+    vkCmdPushConstants(cb, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VkDeviceAddress), &frames_[frameIndex_].frameDataAddress);
     if (depthPreview) {
         vkCmdDraw(cb, 3, 1, 0, 0);
     } else for (std::uint32_t i = 0; i < scene.objects().size(); ++i) {
@@ -491,10 +506,74 @@ void Renderer::submitAndPresent()
 void Renderer::updateShaderData(const Scene& scene)
 {
     chk(extent_.width > 0 && extent_.height > 0);
-    const Scene::ShaderData shaderData = scene.shaderData(static_cast<float>(extent_.width) / extent_.height);
+    FrameData frameData = scene.frameData(static_cast<float>(extent_.width) / extent_.height);
 
-    memcpy(frames_[frameIndex_].shaderDataAllocationInfo.pMappedData, &shaderData, sizeof(shaderData));
-    chk(vmaFlushAllocation(context_.allocator(), frames_[frameIndex_].shaderDataAllocation, 0, VK_WHOLE_SIZE));
+    const auto objects = scene.gpuObjects(frameData.view);
+    const auto materials = scene.gpuMaterials();
+
+    auto& frame = frames_[frameIndex_];
+
+    if (objects.size() > frames_[frameIndex_].objectCapacity) {
+        VkBuffer objectBuffer{VK_NULL_HANDLE};
+        VmaAllocation objectDataAllocation{VK_NULL_HANDLE};
+        VmaAllocationInfo objectDataAllocationInfo{};
+        VkDeviceAddress objectDataAddress{0};
+
+        const size_t newCapacity = std::max(objects.size(), frames_[frameIndex_].objectCapacity * 2);
+
+        VkBufferCreateInfo oBufferCI{ .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = sizeof(GPUObject) * newCapacity, .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT };
+        VmaAllocationCreateInfo oBufferAllocCreateInfo{ .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |  VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO };
+        chk(vmaCreateBuffer(context_.allocator(), &oBufferCI, &oBufferAllocCreateInfo, &objectBuffer, &objectDataAllocation, &objectDataAllocationInfo));
+        VkBufferDeviceAddressInfo oBufferBdaInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = objectBuffer };
+        objectDataAddress = vkGetBufferDeviceAddress(context_.device(), &oBufferBdaInfo);
+
+        vmaDestroyBuffer(context_.allocator(), frame.objectBuffer, frame.objectDataAllocation);
+        frame.objectCapacity = newCapacity;
+        frame.objectBuffer = objectBuffer;
+        frame.objectDataAllocation = objectDataAllocation;
+        frame.objectDataAllocationInfo = objectDataAllocationInfo;
+        frame.objectDataAddress = objectDataAddress;
+    }
+
+    if (materials.size() > frames_[frameIndex_].materialCapacity) {
+        VkBuffer materialBuffer{VK_NULL_HANDLE};
+        VmaAllocation materialDataAllocation{VK_NULL_HANDLE};
+        VmaAllocationInfo materialDataAllocationInfo{};
+        VkDeviceAddress materialDataAddress{0};
+
+        const size_t newCapacity = std::max(materials.size(), frames_[frameIndex_].materialCapacity * 2);
+
+        VkBufferCreateInfo mBufferCI{ .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = sizeof(GPUMaterial) * newCapacity, .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT };
+        VmaAllocationCreateInfo mBufferAllocCreateInfo{ .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |  VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO };
+        chk(vmaCreateBuffer(context_.allocator(), &mBufferCI, &mBufferAllocCreateInfo, &materialBuffer, &materialDataAllocation, &materialDataAllocationInfo));
+        VkBufferDeviceAddressInfo mBufferBdaInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = materialBuffer };
+        materialDataAddress = vkGetBufferDeviceAddress(context_.device(), &mBufferBdaInfo);
+
+        vmaDestroyBuffer(context_.allocator(), frame.materialBuffer, frame.materialDataAllocation);
+        frame.materialCapacity = newCapacity;
+        frame.materialBuffer = materialBuffer;
+        frame.materialDataAllocation = materialDataAllocation;
+        frame.materialDataAllocationInfo = materialDataAllocationInfo;
+        frame.materialDataAddress = materialDataAddress;
+    }
+
+    memcpy(frame.objectDataAllocationInfo.pMappedData,
+       objects.data(), objects.size() * sizeof(GPUObject));
+    memcpy(frame.materialDataAllocationInfo.pMappedData,
+       materials.data(), materials.size() * sizeof(GPUMaterial));
+
+    chk(vmaFlushAllocation(context_.allocator(),
+                       frame.objectDataAllocation, 0, VK_WHOLE_SIZE));
+    chk(vmaFlushAllocation(context_.allocator(),
+                       frame.materialDataAllocation, 0, VK_WHOLE_SIZE));
+
+    frameData.objectBuffer = frame.objectDataAddress;
+    frameData.materialBuffer = frame.materialDataAddress;
+    frameData.objectCount = static_cast<uint32_t>(objects.size());
+    frameData.materialCount = static_cast<uint32_t>(materials.size());
+
+    memcpy(frames_[frameIndex_].frameDataAllocationInfo.pMappedData, &frameData, sizeof(frameData));
+    chk(vmaFlushAllocation(context_.allocator(), frames_[frameIndex_].frameDataAllocation, 0, VK_WHOLE_SIZE));
 }
 
 void Renderer::requestResize()
@@ -569,7 +648,9 @@ void Renderer::cleanup()
     for (const auto& frame : frames_) {
         vkDestroyFence(context_.device(), frame.fence, nullptr);
         vkDestroySemaphore(context_.device(), frame.imageAcquired, nullptr);
-        vmaDestroyBuffer(context_.allocator(), frame.shaderDataBuffer, frame.shaderDataAllocation);
+        vmaDestroyBuffer(context_.allocator(), frame.frameDataBuffer, frame.frameDataAllocation);
+        vmaDestroyBuffer(context_.allocator(), frame.objectBuffer, frame.objectDataAllocation);
+        vmaDestroyBuffer(context_.allocator(), frame.materialBuffer, frame.materialDataAllocation);
     }
     vkDestroyCommandPool(context_.device(), commandPool_, nullptr);
     destroySwapchainResources();

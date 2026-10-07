@@ -36,10 +36,22 @@ private:
         VkCommandBuffer commandBuffer{VK_NULL_HANDLE};
         VkFence fence{VK_NULL_HANDLE};
         VkSemaphore imageAcquired{VK_NULL_HANDLE};
-        VkBuffer shaderDataBuffer{VK_NULL_HANDLE};
-        VmaAllocation shaderDataAllocation{VK_NULL_HANDLE};
-        VmaAllocationInfo shaderDataAllocationInfo{};
-        VkDeviceAddress shaderDataAddress{0};
+        VkBuffer frameDataBuffer{VK_NULL_HANDLE};
+        VmaAllocation frameDataAllocation{VK_NULL_HANDLE};
+        VmaAllocationInfo frameDataAllocationInfo{};
+        VkDeviceAddress frameDataAddress{0};
+
+        VkBuffer objectBuffer{VK_NULL_HANDLE};
+        VmaAllocation objectDataAllocation{VK_NULL_HANDLE};
+        VmaAllocationInfo objectDataAllocationInfo{};
+        VkDeviceAddress objectDataAddress{0};
+        size_t objectCapacity;
+
+        VkBuffer materialBuffer{VK_NULL_HANDLE};
+        VmaAllocation materialDataAllocation{VK_NULL_HANDLE};
+        VmaAllocationInfo materialDataAllocationInfo{};
+        VkDeviceAddress materialDataAddress{0};
+        size_t materialCapacity;
     };
 
     bool createSwapchain();
