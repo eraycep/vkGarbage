@@ -91,7 +91,7 @@ void EditorUi::build(Scene& scene)
         }
         ImGui::Separator();
         // Add light widgets here using scene.light(), and transform widgets using
-        // scene.object(scene.selectedObject()). Changes reach the GPU this frame.
+        // scene.renderObject(scene.selectedObject()). Changes reach the GPU this frame.
         auto& light = scene.light();
         glm::vec3 direction = light.direction;
         if (ImGui::DragFloat3("Direction", &direction.x, 0.01f)) {

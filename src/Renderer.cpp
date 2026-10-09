@@ -365,7 +365,7 @@ void Renderer::recordCommands(const Scene& scene)
     chk(vkBeginCommandBuffer(cb, &cbBI));
     
     // render shadow map
-    shadowMap_.Render(cb, frames_[frameIndex_].frameDataAddress, assets_.mesh(), scene.objects());
+    shadowMap_.Render(cb, frames_[frameIndex_].frameDataAddress, assets_, scene.renderObjects());
 
     std::array<VkImageMemoryBarrier2, 2> outputBarriers{
         VkImageMemoryBarrier2{
@@ -439,14 +439,17 @@ void Renderer::recordCommands(const Scene& scene)
                       depthPreview ? shadowDepthPipeline_ : pipeline_);
     std::array<VkDescriptorSet, 2> descriptorSets{textureSet_, shadowSet_};
     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
-    VkDeviceSize vOffset{ 0 };
-    vkCmdBindVertexBuffers(cb, 0, 1, &assets_.mesh().buffer, &vOffset);
-    vkCmdBindIndexBuffer(cb, assets_.mesh().buffer, assets_.mesh().indexOffset, assets_.mesh().indexType);
     vkCmdPushConstants(cb, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(VkDeviceAddress), &frames_[frameIndex_].frameDataAddress);
     if (depthPreview) {
         vkCmdDraw(cb, 3, 1, 0, 0);
-    } else for (std::uint32_t i = 0; i < scene.objects().size(); ++i) {
-        const auto& range = assets_.mesh().ranges[static_cast<std::size_t>(scene.objects()[i].mesh)];
+    } else for (std::uint32_t i = 0; i < scene.renderObjects().size(); ++i) {
+        const auto& object = scene.renderObjects()[i];
+        const auto& mesh = assets_.mesh(object.mesh);
+        const auto& range = assets_.mesh(object.mesh).range;
+        VkDeviceSize offset{0};
+
+        vkCmdBindVertexBuffers(cb, 0, 1, &mesh.buffer, &offset);
+        vkCmdBindIndexBuffer(cb, mesh.buffer, mesh.indexOffset, mesh.indexType);
         vkCmdDrawIndexed(cb, range.indexCount, 1, range.firstIndex, 0, i);
     }
     ui_->record(cb);
@@ -509,7 +512,7 @@ void Renderer::updateShaderData(const Scene& scene)
     FrameData frameData = scene.frameData(static_cast<float>(extent_.width) / extent_.height);
 
     const auto objects = scene.gpuObjects(frameData.view);
-    const auto materials = scene.gpuMaterials();
+    const auto materials = scene.gpuMaterials(assets_);
 
     auto& frame = frames_[frameIndex_];
 

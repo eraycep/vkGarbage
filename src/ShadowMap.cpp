@@ -21,7 +21,7 @@ ShadowMap::~ShadowMap()
     cleanup();
 }
 
-void ShadowMap::Render(VkCommandBuffer& cb, VkDeviceAddress frameDataAddress, const Assets::Mesh& mesh, std::span<const SceneObject> objects)
+void ShadowMap::Render(VkCommandBuffer cb, VkDeviceAddress frameDataAddress, const Assets& assets, std::span<const RenderObject> objects)
 {
     VkImageMemoryBarrier2 depthBarrier{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -61,11 +61,12 @@ void ShadowMap::Render(VkCommandBuffer& cb, VkDeviceAddress frameDataAddress, co
     vkCmdSetScissor(cb, 0, 1, &scissor);
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
     VkDeviceSize vOffset{ 0 };
-    vkCmdBindVertexBuffers(cb, 0, 1, &mesh.buffer, &vOffset);
-    vkCmdBindIndexBuffer(cb, mesh.buffer, mesh.indexOffset, mesh.indexType);
     vkCmdPushConstants(cb, pipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VkDeviceAddress), &frameDataAddress);
     for (std::uint32_t i = 0; i < objects.size(); ++i) {
-        const auto& range = mesh.ranges[static_cast<std::size_t>(objects[i].mesh)];
+        const auto& mesh = assets.mesh(objects[i].mesh);
+        vkCmdBindVertexBuffers(cb, 0, 1, &mesh.buffer, &vOffset);
+        vkCmdBindIndexBuffer(cb, mesh.buffer, mesh.indexOffset, mesh.indexType);
+        const auto& range = mesh.range;
         vkCmdDrawIndexed(cb, range.indexCount, 1, range.firstIndex, 0, i);
     }
     vkCmdEndRendering(cb);

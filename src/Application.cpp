@@ -32,7 +32,7 @@ void Application::initialize()
     shadowMap_ = std::make_unique<ShadowMap>(*context_);
     assets_ = std::make_unique<Assets>(*context_);
     assets_->load();
-    scene_ = std::make_unique<Scene>();
+    scene_ = std::make_unique<Scene>(*assets_);
     renderer_ = std::make_unique<Renderer>(*context_, *window_, *assets_, *shadowMap_);
     lastFrameTime_ = SDL_GetTicksNS();
     running_ = true;

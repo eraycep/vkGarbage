@@ -32,13 +32,19 @@ Assets::~Assets()
 
 void Assets::load(const std::filesystem::path &directory)
 {
-    chk(mesh_.buffer == VK_NULL_HANDLE); // load() is a one-time operation.
+    chk(shader_ == nullptr);
     shader_ = std::make_unique<Shader>(context_.device(), directory / "shader.slang");
-    loadMesh(directory / "suzanne.obj");
-    for (std::size_t i = 0; i < textures_.size(); ++i)
-    {
-        textures_[i] = loadTexture(directory / ("suzanne" + std::to_string(i) + ".ktx"));
+    defaultSceneAssets_.suzanne = loadMesh(directory / "suzanne.obj");
+    defaultSceneAssets_.plane = createPlane();
+    for (std::size_t i = 0; i < defaultSceneAssets_.monkeyMaterials.size(); ++i) {
+        const auto textureHandle = loadTexture(directory / ("suzanne" + std::to_string(i) + ".ktx"));
+        Material material{};
+        material.baseColorTexture = textureHandle;
+        defaultSceneAssets_.monkeyMaterials[i] = addMaterial(material);
     }
+    Material floor{};
+    floor.baseColorFactor = glm::vec4(0.65f, 0.65f, 0.65f, 1.0f);
+    defaultSceneAssets_.floorMaterial = addMaterial(floor);
 }
 
 namespace {
@@ -142,12 +148,47 @@ MeshData loadMeshData(const std::filesystem::path& path)
 }
 } // namespace
 
-void Assets::loadMesh(const std::filesystem::path& path)
+MeshHandle Assets::loadMesh(const std::filesystem::path& path)
 {
+    if (meshes_.size() >= invalidHandle) throw std::overflow_error("Asset handle capacity exhausted");
+    meshes_.reserve(meshes_.size() + 1);
+    Mesh mesh;
     // Finish all parsing and validation before allocating GPU resources.
     auto data = loadMeshData(path);
     const auto meshIndexCount = static_cast<std::uint32_t>(data.indices.size());
-    const auto floorVertex = static_cast<std::uint32_t>(data.vertices.size());
+
+    const VkDeviceSize vertexBytes = sizeof(Vertex) * data.vertices.size();
+    const VkDeviceSize indexBytes = sizeof(std::uint32_t) * data.indices.size();
+    VkBufferCreateInfo bufferInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = vertexBytes + indexBytes,
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+    };
+    VmaAllocationCreateInfo allocationInfo{
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO,
+    };
+    VmaAllocationInfo mappedInfo{};
+    chk(vmaCreateBuffer(context_.allocator(), &bufferInfo, &allocationInfo,
+                        &mesh.buffer, &mesh.allocation, &mappedInfo));
+    std::memcpy(mappedInfo.pMappedData, data.vertices.data(), static_cast<std::size_t>(vertexBytes));
+    std::memcpy(static_cast<char*>(mappedInfo.pMappedData) + vertexBytes,
+                data.indices.data(), static_cast<std::size_t>(indexBytes));
+    chk(vmaFlushAllocation(context_.allocator(), mesh.allocation, 0, VK_WHOLE_SIZE));
+    mesh.indexOffset = vertexBytes;
+    mesh.range = {0, meshIndexCount, data.boundingBox};
+    mesh.indexType = VK_INDEX_TYPE_UINT32;
+    meshes_.push_back(mesh);
+    return static_cast<MeshHandle>(meshes_.size() - 1);
+}
+
+MeshHandle Assets::createPlane()
+{
+    if (meshes_.size() >= invalidHandle) throw std::overflow_error("Asset handle capacity exhausted");
+    meshes_.reserve(meshes_.size() + 1);
+    Mesh mesh;
+    MeshData data;
+
     // This scene uses +Y downward. The floor faces upward, toward -Y.
     data.vertices.insert(data.vertices.end(), {
         {{-1.0f, 0.0f, -1.0f}, {0, -1, 0}, {0, 0}},
@@ -156,7 +197,7 @@ void Assets::loadMesh(const std::filesystem::path& path)
         {{-1.0f, 0.0f,  1.0f}, {0, -1, 0}, {0, 1}}
     });
     for (std::uint32_t index : {0u, 1u, 2u, 0u, 2u, 3u}) {
-        data.indices.push_back(floorVertex + index);
+        data.indices.push_back(index);
     }
     const VkDeviceSize vertexBytes = sizeof(Vertex) * data.vertices.size();
     const VkDeviceSize indexBytes = sizeof(std::uint32_t) * data.indices.size();
@@ -171,19 +212,24 @@ void Assets::loadMesh(const std::filesystem::path& path)
     };
     VmaAllocationInfo mappedInfo{};
     chk(vmaCreateBuffer(context_.allocator(), &bufferInfo, &allocationInfo,
-                        &mesh_.buffer, &mesh_.allocation, &mappedInfo));
+                        &mesh.buffer, &mesh.allocation, &mappedInfo));
     std::memcpy(mappedInfo.pMappedData, data.vertices.data(), static_cast<std::size_t>(vertexBytes));
     std::memcpy(static_cast<char*>(mappedInfo.pMappedData) + vertexBytes,
                 data.indices.data(), static_cast<std::size_t>(indexBytes));
-    chk(vmaFlushAllocation(context_.allocator(), mesh_.allocation, 0, VK_WHOLE_SIZE));
-    mesh_.indexOffset = vertexBytes;
-    mesh_.ranges[static_cast<std::size_t>(MeshId::Suzanne)] = {0, meshIndexCount, data.boundingBox};
-    mesh_.ranges[static_cast<std::size_t>(MeshId::Plane)] = {meshIndexCount, 6, {{-1, 0, -1}, {1, 0, 1}}};
-    mesh_.indexType = VK_INDEX_TYPE_UINT32;
+    chk(vmaFlushAllocation(context_.allocator(), mesh.allocation, 0, VK_WHOLE_SIZE));
+    mesh.indexOffset = vertexBytes;
+    mesh.range = {0, 6, {{-1, 0, -1}, {1, 0, 1}}};
+    mesh.indexType = VK_INDEX_TYPE_UINT32;
+    meshes_.push_back(mesh);
+
+    uint32_t mesh_index = static_cast<uint32_t>(meshes_.size() - 1);
+    return mesh_index;
 }
 
-Assets::Texture Assets::loadTexture(const std::filesystem::path &path)
+TextureHandle Assets::loadTexture(const std::filesystem::path& path)
 {
+    if (textures_.size() >= invalidHandle) throw std::overflow_error("Asset handle capacity exhausted");
+    textures_.reserve(textures_.size() + 1);
     Texture texture{};
     ktxTexture *source{nullptr};
     const auto filename = path.string();
@@ -318,7 +364,22 @@ Assets::Texture Assets::loadTexture(const std::filesystem::path &path)
         .maxLod = static_cast<float>(source->numLevels - 1),
     };
     chk(vkCreateSampler(context_.device(), &samplerCI, nullptr, &texture.sampler));
-    return texture;
+    textures_.push_back(texture);
+    TextureHandle texture_index = (textures_.size() - 1);
+    return texture_index;
+}
+
+MaterialHandle Assets::addMaterial(const Material& material)
+{
+    if (materials_.size() >= invalidHandle) throw std::overflow_error("Asset handle capacity exhausted");
+    materials_.reserve(materials_.size() + 1);
+    for (TextureHandle handle : {material.baseColorTexture, material.normalTexture, material.metallicRoughnessTexture}) {
+        if (handle != invalidHandle && handle >= textures_.size()) {
+            throw std::out_of_range("Material references an invalid texture handle");
+        }
+    }
+    materials_.push_back(material);
+    return static_cast<MaterialHandle>(materials_.size() - 1);
 }
 
 VkCommandBuffer Assets::beginUpload()
@@ -363,14 +424,26 @@ void Assets::cleanup()
         vkDestroyImageView(context_.device(), texture.view, nullptr);
         vmaDestroyImage(context_.allocator(), texture.image, texture.allocation);
     }
-    vmaDestroyBuffer(context_.allocator(), mesh_.buffer, mesh_.allocation);
+    for (const auto& mesh : meshes_) {
+        vmaDestroyBuffer(context_.allocator(), mesh.buffer, mesh.allocation);
+    }
     shader_.reset();
     vkDestroyCommandPool(context_.device(), uploadCommandPool_, nullptr);
 }
 
-const Assets::Mesh &Assets::mesh() const
+const Assets::Mesh& Assets::mesh(MeshHandle index) const
 {
-    return mesh_;
+    return meshes_.at(index);
+}
+
+const Assets::Material& Assets::material(MaterialHandle index) const
+{
+    return materials_.at(index);
+}
+
+const Assets::Texture& Assets::texture(TextureHandle index) const
+{
+    return textures_.at(index);
 }
 
 std::span<const Assets::Texture> Assets::textures() const
@@ -381,4 +454,9 @@ std::span<const Assets::Texture> Assets::textures() const
 VkShaderModule Assets::shaderModule() const
 {
     return shader_ ? shader_->module() : VK_NULL_HANDLE;
+}
+
+Assets::Material& Assets::material(MaterialHandle index)
+{
+    return materials_.at(index);
 }

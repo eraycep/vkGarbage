@@ -4,21 +4,21 @@
 #include <limits>
 #include <cmath>
 
-Scene::Scene()
+Scene::Scene(const Assets& assets)
 {
-    objects_ = {{
-        {.position = {-3, 0, 0}, .textureIndex = 0},
-        {.position = { 0, 0, 0}, .textureIndex = 1},
-        {.position = { 3, 0, 0}, .textureIndex = 2},
-        {.position = {0, 1.5f, 0}, .scale = {8, 1, 8},
-         .mesh = MeshId::Plane, .color = {0.65f, 0.65f, 0.65f}, .selectable = false}
-    }};
+    const auto& handles = assets.defaultSceneAssets();
+    for (std::uint32_t i = 0; i < handles.monkeyMaterials.size(); ++i) {
+        renderObjects_.push_back({handles.suzanne, handles.monkeyMaterials[i],
+            {.position = {(static_cast<float>(i) - 1.0f) * 3.0f, 0, 0}}});
+    }
+    renderObjects_.push_back({handles.plane, handles.floorMaterial,
+        {.position = {0, 1.5f, 0}, .scale = {8, 1, 8}}, false});
 }
 
 void Scene::rotateSelected(const glm::vec2& deltaRadians)
 {
-    objects_[selectedObject_].rotation.x += deltaRadians.x;
-    objects_[selectedObject_].rotation.y += deltaRadians.y;
+    renderObjects_[selectedObject_].transform.rotation.x += deltaRadians.x;
+    renderObjects_[selectedObject_].transform.rotation.y += deltaRadians.y;
 }
 
 void Scene::rotateCamera(float x, float y)
@@ -57,17 +57,17 @@ void Scene::moveCamera(glm::vec3 delta)
 
 void Scene::selectNext()
 {
-    for (std::uint32_t step = 1; step <= objectCount; ++step) {
-        const auto next = (selectedObject_ + step) % objectCount;
-        if (objects_[next].selectable) { selectedObject_ = next; break; }
+    for (std::uint32_t step = 1; step <= renderObjects_.size(); ++step) {
+        const auto next = (selectedObject_ + step) % renderObjects_.size();
+        if (renderObjects_[next].selectable) { selectedObject_ = next; break; }
     }
 }
 
 void Scene::selectPrevious()
 {
-    for (std::uint32_t step = 1; step <= objectCount; ++step) {
-        const auto next = (selectedObject_ + objectCount - step) % objectCount;
-        if (objects_[next].selectable) { selectedObject_ = next; break; }
+    for (std::uint32_t step = 1; step <= renderObjects_.size(); ++step) {
+        const auto next = (selectedObject_ + renderObjects_.size() - step) % renderObjects_.size();
+        if (renderObjects_[next].selectable) { selectedObject_ = next; break; }
     }
 }
 
@@ -76,18 +76,18 @@ std::optional<uint32_t> Scene::pickObject(const glm::vec3& rayOrigin, const glm:
     std::optional<uint32_t> closest;
     float closestDistance = std::numeric_limits<float>::infinity();
     if (glm::dot(rayDirection, rayDirection) == 0.0f) return std::nullopt;
-    for (uint32_t i = 0; i < objects_.size(); ++i) {
-        const auto& object = objects_[i];
-        if (!object.selectable || object.scale.x == 0.0f ||
-            object.scale.y == 0.0f || object.scale.z == 0.0f) continue;
-        const glm::mat4 model = glm::translate(glm::mat4(1.0f), object.position) *
-            glm::mat4_cast(glm::quat(object.rotation)) *
-            glm::scale(glm::mat4(1.0f), object.scale);
+    for (uint32_t i = 0; i < renderObjects_.size(); ++i) {
+        const auto& object = renderObjects_[i];
+        if (!object.selectable || object.transform.scale.x == 0.0f ||
+            object.transform.scale.y == 0.0f || object.transform.scale.z == 0.0f) continue;
+        const glm::mat4 model = glm::translate(glm::mat4(1.0f), object.transform.position) *
+            glm::mat4_cast(glm::quat(object.transform.rotation)) *
+            glm::scale(glm::mat4(1.0f), object.transform.scale);
         const glm::mat4 inverseModel = glm::inverse(model);
         const glm::vec3 localOrigin(inverseModel * glm::vec4(rayOrigin, 1.0f));
         // Do not normalize: preserve the world ray parameter across different scales.
         const glm::vec3 localDirection(inverseModel * glm::vec4(rayDirection, 0.0f));
-        const auto& bounds = assets.mesh().ranges.at(static_cast<std::size_t>(object.mesh)).boundingBox;
+        const auto& bounds = assets.mesh(object.mesh).range.boundingBox;
         const auto hit = bounds.intersectRay(localOrigin, localDirection);
         if (hit && *hit < closestDistance) {
             closestDistance = *hit;
@@ -99,7 +99,7 @@ std::optional<uint32_t> Scene::pickObject(const glm::vec3& rayOrigin, const glm:
 
 void Scene::selectObject(uint32_t index)
 {
-    if (index < objects_.size() && objects_[index].selectable) selectedObject_ = index;
+    if (index < renderObjects_.size() && renderObjects_[index].selectable) selectedObject_ = index;
 }
 
 std::uint32_t Scene::selectedObject() const
@@ -151,37 +151,38 @@ FrameData Scene::frameData(float aspectRatio) const
 std::vector<GPUObject> Scene::gpuObjects(const glm::mat4& view) const
 {
     std::vector<GPUObject> gpuObjects;
-    gpuObjects.reserve(objects_.size());
-    for (uint32_t i = 0; i < objects_.size(); i++) {
-        const auto& object = objects_[i];
+    gpuObjects.reserve(renderObjects_.size());
+    for (uint32_t i = 0; i < renderObjects_.size(); i++) {
+        const auto& object = renderObjects_[i];
         GPUObject gpuObject;
 
-        gpuObject.model = glm::translate(glm::mat4(1.0f), object.position) *
-            glm::mat4_cast(glm::quat(object.rotation)) *
-            glm::scale(glm::mat4(1.0f), object.scale);
+        gpuObject.model = object.transform.matrix();
         gpuObject.normalMatrix = glm::transpose(glm::inverse(view * gpuObject.model));
-        gpuObject.color = glm::vec4(object.color, 1.0f);
-        gpuObject.materialIndex = i;
+        gpuObject.materialIndex = object.material;
+        gpuObject.color = glm::vec4(1.0f);
         gpuObjects.push_back(gpuObject);
     }
 
     return gpuObjects;
 }
 
-std::vector<GPUMaterial> Scene::gpuMaterials() const
+std::vector<GPUMaterial> Scene::gpuMaterials(const Assets& assets) const
 {
     std::vector<GPUMaterial> gpuMaterials;
-    gpuMaterials.reserve(objects_.size());
+    gpuMaterials.reserve(assets.materials().size());
 
-    for (uint32_t i = 0; i < objects_.size(); i++) {
-        const auto& object = objects_[i];
+    for (uint32_t i = 0; i < assets.materials().size(); i++) {
+        const auto& material = assets.material(i);
         GPUMaterial gpuMaterial;
 
-        gpuMaterial.baseColor = glm::vec4(1.0f);
-        gpuMaterial.textureIndex = object.textureIndex;
+        gpuMaterial.baseColor = material.baseColorFactor;
         gpuMaterial.specularShininess = glm::vec4(
-            object.specularColor * object.specularStrength,
-            object.shininess);
+            material.specularColor * material.specularStrength,
+            material.shininess
+        );
+        gpuMaterial.textureIndex = material.baseColorTexture == invalidHandle
+                    ? -1
+                    : static_cast<int32_t>(material.baseColorTexture); 
 
         gpuMaterials.push_back(gpuMaterial);
     }

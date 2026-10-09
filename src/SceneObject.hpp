@@ -2,18 +2,30 @@
 
 #include <glm/glm.hpp>
 #include <cstdint>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <limits>
 
-enum class MeshId : std::uint32_t { Suzanne, Plane, Count };
+using MeshHandle = std::uint32_t;
+using MaterialHandle = std::uint32_t;
+using TextureHandle = std::uint32_t;
+inline constexpr std::uint32_t invalidHandle = std::numeric_limits<std::uint32_t>::max();
 
-struct SceneObject {
+struct Transform {
     glm::vec3 position{0.0f};
-    glm::vec3 rotation{0.0f}; // Euler angles in radians.
-    glm::vec3 scale{1.0f};   // Keep components nonzero.
-    MeshId mesh{MeshId::Suzanne};
-    std::int32_t textureIndex{-1}; // -1 uses color without a texture.
-    glm::vec3 color{1.0f};
+    glm::vec3 rotation{0.0f}; // Radians.
+    glm::vec3 scale{1.0f};
+
+    glm::mat4 matrix() const {
+        return glm::translate(glm::mat4(1.0f), position) *
+            glm::mat4_cast(glm::quat(rotation)) *
+            glm::scale(glm::mat4(1.0f), scale);
+    }
+};
+
+struct RenderObject {
+    MeshHandle mesh{invalidHandle};
+    MaterialHandle material{invalidHandle};
+    Transform transform;
     bool selectable{true};
-    glm::vec3 specularColor{1.0f};
-    float specularStrength{0.75f};
-    float shininess{16.0f};
 };
